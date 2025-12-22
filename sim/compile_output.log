@@ -1,0 +1,12 @@
+mkdir -p vcs
+python3 check_sus.py
+[31mForbidden Keyword Found: [0m
+hdl/cache_controller.sv:7:    input   logic           dirty_bit,        // Dirty bit (1: modified, 0: not modified)
+hdl/cache_controller.sv:144:                // If valid bit is 1 and tag matches, it's a hit
+hdl/cache_controller.sv:177:                    // If valid bit is 1 but tag doesn't match
+hdl/cache_controller.sv:179:                        // If dirty bit is 1, it's a dirty miss
+hdl/cache_controller.sv:190:                        // If dirty bit is 0, it's a clean miss
+hdl/lru_array.sv:57:            for (int i = 0; i < NUM_SETS; i++) begin
+hdl/valid_array.sv:38:            for (int i = 0; i < NUM_SETS; i++) begin
+
+make: *** [vcs/top_tb] Error 1
