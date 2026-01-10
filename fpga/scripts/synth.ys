@@ -1,0 +1,15 @@
+# Yosys Synthesis Script
+
+# 1. Read the transpiled Verilog file (from sv2v)
+read_verilog build/cpu.v
+
+# 2. Synthesis for Xilinx 7 Series
+# -flatten: improves optimization across boundaries
+# -abc9: uses improved mapping
+synth_xilinx -flatten -abc9 -top cpu -family xc7
+
+# 3. Optimization and Check
+opt_clean -purge
+
+# 4. Write Output in JSON format (for nextpnr)
+write_json build/cpu.json

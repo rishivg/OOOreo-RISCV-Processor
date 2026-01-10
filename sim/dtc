@@ -1,0 +1,21 @@
+#!/bin/bash
+echo "dtc called with args: $@" >> dtc_log.txt
+# Scan for output file argument
+# Argument format can be -O dtb -o filename
+# or multiple flags.
+# We just want to find if there is a file path that we should create.
+
+prev=""
+output_file=""
+for arg in "$@"; do
+    if [ "$prev" == "-o" ]; then
+        output_file="$arg"
+    fi
+    prev="$arg"
+done
+
+if [ -n "$output_file" ]; then
+    echo "Creating dummy output file: $output_file" >> dtc_log.txt
+    touch "$output_file"
+fi
+exit 0

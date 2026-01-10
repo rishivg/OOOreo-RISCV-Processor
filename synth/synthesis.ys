@@ -1,0 +1,70 @@
+# Generated synthesis script
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/backend_top.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/branch/branch_top.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/branch/br_rs/br_rs.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/branch/br_rs/fu_br.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/branch/control_buffer.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/decode/decoder.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/decode/ds_stage.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/decode/id_stage.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/execute/intm_rs/fu_div.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/execute/intm_rs/fu_md.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/execute/intm_rs/fu_mul.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/execute/intm_rs/intm_rs_normal.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/execute/intm_rs/intm_rs_ordered.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/execute/int_rs/fu_alu.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/execute/int_rs/int_rs_normal.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/execute/int_rs/int_rs_ordered.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/execute/int_rs/issue_arbiter.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/execute/prf.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/rename/free_list.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/rename/rat.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/rename/rob.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/backend/rename/rrf.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/common/bmem_arbiter.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/common/cache_adapter.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/common/dmem_arbiter.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/common/interfaces/backend_itf.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/common/interfaces/cache_itf.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/common/interfaces/cacheline_itf.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/common/interfaces/frontend_itf.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/common/lru_array.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/common/one_hot_mux.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/common/pipeline_reg.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/common/plru_update.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/common/rs_entry.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/common/skid_buffer.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/common/sync_fifo.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/common/valid_array.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/cpu.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/frontend/branch_predictor/gshare.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/frontend/branch_predictor/ubtb.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/frontend/frontend_top.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/frontend/icache/icache_ctrl.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/frontend/icache/icache.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/frontend/if1_stage.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/frontend/inst_queue.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/memory/dcache/dcache_ctrl.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/memory/dcache/dcache.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/memory/dcache/hit_detection.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/memory/fu_agu.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/memory/load_queue.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/memory/lsq.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/memory/lsu_adapter.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/memory/lsu_top.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/memory/mem_rs/mem_rs.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/memory/mm_stage.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/memory/store_buf.sv
+read_verilog -sv -Iwork/pkg_headers work/src/hdl/memory/store_queue.sv
+read_verilog work/src/sram/icache_tag_array/icache_tag_array.v
+read_verilog work/src/sram/dcache_data_array/dcache_data_array.v
+read_verilog work/src/sram/mp_cache_data_array/mp_cache_data_array.v
+read_verilog work/src/sram/icache_data_array/icache_data_array.v
+read_verilog work/src/sram/mp_cache_tag_array/mp_cache_tag_array.v
+read_verilog work/src/sram/dcache_tag_array/dcache_tag_array.v
+prep -top cpu
+hierarchy -check
+synth -top cpu
+stat -tech cmos
+write_verilog outputs/synth.v
+tee -o reports/area.rpt stat -tech cmos

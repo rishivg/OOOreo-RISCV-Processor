@@ -1,70 +1,39 @@
 SHELL=/bin/bash -o pipefail
 .SHELLFLAGS += -e
 
-export PKG_SRCS = $(PWD)/../pkg/types.sv
-export HDL_SRCS = $(shell find $(PWD)/../hdl -name '*.sv')
-export SRAM_LIB = $(shell find $(PWD)/../sram/output/ -name "*.db")
 export DESIGN_TOP = cpu
 
-export STD_CELL_LIB=$(FREEPDK45)/stdcells.db
-export STD_CELL_ALIB=$(FREEPDK45)/alib
-
-export SNPSLMD_QUEUE=true
-
 .PHONY: synth
-synth: clean
-	$(MAKE) outputs/synth.ddc
-
-outputs/synth.ddc:
-	mkdir -p reports outputs
-	python3 $(PWD)/../bin/get_options.py clock
-	python3 $(PWD)/../bin/get_options.py min_power
-	python3 $(PWD)/../bin/get_options.py synth_cmd
-	python3 $(PWD)/../bin/get_options.py synth_cmd_inc
-	python3 $(PWD)/../bin/get_options.py synth_inc_iter
-	export ECE411_CLOCK_PERIOD_PS=$(shell python3 $(PWD)/../bin/get_options.py clock) ;\
-	export ECE411_MIN_POWER=$(shell python3 $(PWD)/../bin/get_options.py min_power) ;\
-	export ECE411_COMPILE_CMD="$(shell python3 $(PWD)/../bin/get_options.py synth_cmd)" ;\
-	export ECE411_COMPILE_CMD_INC="$(shell python3 $(PWD)/../bin/get_options.py synth_cmd_inc)" ;\
-	export ECE411_COMPILE_ITER="$(shell python3 $(PWD)/../bin/get_options.py synth_inc_iter)" ;\
-	export ECE411_DC_CORES=4 ;\
-	dc_shell -f synthesis.tcl |& tee reports/synthesis.log
-	rm -f  *.log
-	rm -f  default.svf
-	rm -rf work
-	bash check_synth_error.sh
-
-../sim/vcs/dump.fsdb.saif: ../sim/vcs/dump.fsdb
-	cd ../sim/vcs && fsdb2saif -licqueue dump.fsdb -bt $(shell head -n1 ../sim/vcs/time.txt)ps -et $(shell tail -n1 ../sim/vcs/time.txt)ps -s top_tb/dut
-
-../sim/verilator/dump.fst.saif: ../sim/verilator/dump.fst
-	rm -f ../sim/verilator/dump.vcd
-	cd ../sim/verilator && vcd2saif -pipe 'fst2vcd -f dump.fst | sed -E "s/logic/reg/g;s/int/reg/g" > dump.vcd' -input dump.vcd -output dump.fst.saif -time $(shell head -n1 ../sim/verilator/time.txt) $(shell tail -n1 ../sim/verilator/time.txt) -instance vtop/top_tb/dut
-
-.PHONY: power_vcs
-power_vcs: outputs/synth.ddc ../sim/vcs/dump.fsdb.saif
-	mkdir -p reports outputs
-	export ECE411_SAIF_FILE=../sim/vcs/dump.fsdb.saif ;\
-	export ECE411_SAIF_TOP=top_tb/dut ;\
-	export ECE411_POWER_RPT_PATH=./reports ;\
-	dc_shell -f power.tcl |& tee reports/power.log
-
-.PHONY: power_verilator
-power_verilator: outputs/synth.ddc ../sim/verilator/dump.fst.saif
-	mkdir -p reports outputs
-	export ECE411_SAIF_FILE=../sim/verilator/dump.fst.saif ;\
-	export ECE411_SAIF_TOP=vtop/top_tb/dut ;\
-	export ECE411_POWER_RPT_PATH=./reports ;\
-	dc_shell -f power.tcl |& tee reports/power.log
-
-.PHONY: dv
-dv:
-	timeout $(ECE411_GUI_TIMEOUT) design_vision -f dv.tcl
+synth:
+	@mkdir -p reports outputs work/src
+	@rm -rf work/src/* work/pkg_headers
+	@echo "Copying sources..."
+	@mkdir -p work/src/hdl work/src/pkg
+	@cp -r ../hdl/* work/src/hdl/
+	@cp -r ../pkg/* work/src/pkg/
+	@mkdir -p work/src/sram
+	@if [ -d "../sram/output" ]; then cp -r ../sram/output/* work/src/sram/; fi
+	@echo "Splitting packages into headers..."
+	@python3 split_pkg.py
+	@echo "Converting imports to includes (moving to top)..."
+	@python3 convert_imports.py
+	@if command -v yosys >/dev/null 2>&1; then \
+		echo "Found Yosys, generating synthesis script..."; \
+		echo "# Generated synthesis script" > synthesis.ys; \
+		find work/src/hdl -name '*.sv' | sort | while read f; do echo "read_verilog -sv -Iwork/pkg_headers $$f" >> synthesis.ys; done; \
+		find work/src/sram -name '*.v' | while read f; do echo "read_verilog $$f" >> synthesis.ys; done; \
+		echo "prep -top $(DESIGN_TOP)" >> synthesis.ys; \
+		echo "hierarchy -check" >> synthesis.ys; \
+		echo "synth -top $(DESIGN_TOP)" >> synthesis.ys; \
+		echo "stat -tech cmos" >> synthesis.ys; \
+		echo "write_verilog outputs/synth.v" >> synthesis.ys; \
+		echo "tee -o reports/area.rpt stat -tech cmos" >> synthesis.ys; \
+		yosys -s synthesis.ys | tee synthesis.log; \
+	else \
+		echo "Error: Yosys not found in PATH. Please install Yosys for open-source synthesis."; \
+		exit 1; \
+	fi
 
 .PHONY: clean
 clean:
-	rm -f  *.log
-	rm -f  default.svf
-	rm -rf work
-	rm -rf reports
-	rm -rf outputs
+	rm -rf reports outputs work synthesis.log synthesis.ys

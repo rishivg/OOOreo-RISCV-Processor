@@ -5,18 +5,7 @@ import os
 import sys
 import string
 
-if len(sys.argv) not in [2, 3]:
-    print("Usage:   python3 rvfi_reference.py channels [no_float]")
-    print("Example: python3 rvfi_reference.py 1")
-    print("Example: python3 rvfi_reference.py 8 no_float")
-    exit(1)
-
-channels = int(sys.argv[1])
-
-if len(sys.argv) == 3:
-    no_float = True
-else:
-    no_float = False
+channels = 8
 
 rvfi_list = [
     "valid"     ,
@@ -28,6 +17,8 @@ rvfi_list = [
     "rs2_rdata" ,
     "rd_addr"   ,
     "rd_wdata"  ,
+    "frd_addr"  ,
+    "frd_wdata" ,
     "pc_rdata"  ,
     "pc_wdata"  ,
     "mem_addr"  ,
@@ -36,18 +27,6 @@ rvfi_list = [
     "mem_rdata" ,
     "mem_wdata"
 ]
-
-if not no_float:
-    rvfi_list += [
-        "frs1_addr" ,
-        "frs2_addr" ,
-        "frs3_addr" ,
-        "frs1_rdata",
-        "frs2_rdata",
-        "frs3_rdata",
-        "frd_addr"  ,
-        "frd_wdata"
-    ]
 
 required_list = []
 
@@ -70,7 +49,7 @@ if not all([x in j for x in required_list]):
     exit(1)
 
 if not all([x in required_list for x in j]):
-    print("invalid entry in rvfi_reference.json", file=sys.stderr)
+    print("spurious item in rvfi_reference.json", file=sys.stderr)
     exit(1)
 
 if not all([set(j[x]) <= allowed_char for x in j]):

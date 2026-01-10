@@ -1,20 +1,34 @@
 SHELL=/bin/bash -o pipefail
 .SHELLFLAGS += -e
 
-export PKG_SRCS = $(PWD)/../pkg/types.sv
-export HDL_SRCS = $(shell find $(PWD)/../hdl -name '*.sv')
-export SRAM_LIB = $(shell find $(PWD)/../sram/output/ -name "*.db")
-export DESIGN_TOP = cpu
+PKG_SRCS  := $(PWD)/../pkg/types.sv
+HDL_SRCS  := $(shell find $(PWD)/../hdl -name '*.sv')
+SRAM_SRCS := $(shell find $(PWD)/../sram/output -name '*.v')
+STUB_SRCS := $(PWD)/dw_stubs.v
+
+# Verilator Flags:
+# -Wall: Enable all warnings
+# --lint-only: Check for syntax/lint errors, don't build
+# --top-module cpu: Top level module
+FLAGS     := -Wall --lint-only --top-module cpu -Wno-fatal +define+ECE411_VERILATOR ../sim/verilator_warn.vlt
 
 .PHONY: lint
-lint: clean
-	mkdir -p reports
-	sg_shell -licqueue < lint.tcl |& tee reports/lint.log
-	mv spyglass-1/consolidated_reports/*_lint_lint_turbo_rtl/*.rpt reports/
-	mv reports/moresimple_turbo.rpt reports/lint.rpt
-	rm -rf spyglass-1 WORK *.log
-	bash check_lint_error.sh
+lint:
+	./run_lint.sh all
+
+.PHONY: lint-verilator
+lint-verilator:
+	./run_lint.sh verilator
+
+.PHONY: lint-icarus
+lint-icarus:
+	./run_lint.sh icarus
+
+.PHONY: lint-yosys
+lint-yosys:
+	./run_lint.sh yosys
 
 .PHONY: clean
 clean:
-	rm -rf spyglass-1 WORK *.log reports
+	rm -rf obj_dir reports/*.stats reports/*.log
+

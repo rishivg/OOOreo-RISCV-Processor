@@ -55,11 +55,12 @@ assembler_args = f"-mcmodel=medany -ffreestanding -nostartfiles -static -static-
 out_elf_file = os.path.join(work_dir, pathlib.Path(input_file[0]).stem + ".elf")
 out_dis_file = os.path.join(work_dir, pathlib.Path(input_file[0]).stem + ".dis")
 temp_bin_file = os.path.join(work_dir, pathlib.Path(input_file[0]).stem + ".bin")
-spike_elf_link = os.path.join(work_dir, "spike_dpi.elf")
 
-for f in [os.path.join(work_dir, f"memory_{x}.lst") for x in addressability] + [out_elf_file, out_dis_file, temp_bin_file, spike_elf_link]:
+for f in [os.path.join(work_dir, f"memory_{x}.lst") for x in addressability] + [out_elf_file, out_dis_file, temp_bin_file]:
     if os.path.isfile(f):
         os.remove(f)
+if not os.path.isdir(work_dir):
+    os.system(f"mkdir -p {work_dir}")
 if not os.path.isdir(work_dir):
     os.system(f"mkdir -p {work_dir}")
 
@@ -78,11 +79,6 @@ if compile:
     else:
         print(f"[INFO]  Compiled source to {out_elf_file}")
 
-result = subprocess.run(f"ln -sf {out_elf_file} {spike_elf_link}", shell=True, stdout=subprocess.PIPE)
-if result.returncode != 0:
-    print(sprint_color("[ERROR] ", RED) + "Unable to create elf link")
-    exit(1)
-
 result = subprocess.run(f"{objdump} -D -Mnumeric {out_elf_file} > {out_dis_file}", shell=True, stdout=subprocess.PIPE)
 if result.returncode != 0:
     print(sprint_color("[ERROR] ", RED) + "Error disassembling")
@@ -90,7 +86,7 @@ if result.returncode != 0:
 else:
     print(f"[INFO]  Disassembling {os.path.basename(out_elf_file)} to {out_dis_file}")
 
-result = subprocess.run(f"{objdump} -h {out_elf_file}", shell=True, stdout=subprocess.PIPE)
+result = subprocess.run(f"objdump -h {out_elf_file}", shell=True, stdout=subprocess.PIPE)
 if result.returncode != 0:
     print(sprint_color("[ERROR] ", RED) + "Error objdumping")
     exit(1)

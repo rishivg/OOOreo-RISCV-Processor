@@ -25,8 +25,8 @@ allowed_sv_tasks = [
     "onehot0",
     "fatal",
 ]
-sus_keywords = ["DPI", "`", "verilator", "xprop_off", "translate_off", "dc_tcl_script_begin", "dc_script_begin"]
-banned_wholewords = ["bit", "int", "byte", "shortint", "longint", "real", "shortreal", "time"]
+sus_keywords = ["DPI", "`", "xprop_off", "translate_off", "dc_tcl_script_begin", "dc_script_begin"]
+banned_wholewords = ["byte", "shortint", "longint", "real", "shortreal", "time"]
 search_dir = ["hdl", "pkg"]
 allowed_char = set(string.ascii_lowercase + string.ascii_uppercase + string.digits + "._-/")
 

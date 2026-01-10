@@ -1,7 +1,7 @@
 OUTPUT_ARCH( "riscv" )
 ENTRY(_start)
 
-_text_start = 0xaaaaa000;
+_text_start = 0x1eceb000;
 _stack_top  = 0xf0000000;
 
 SECTIONS

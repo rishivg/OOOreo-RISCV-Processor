@@ -12,13 +12,6 @@ os.chdir("..")
 with open("options.json") as f:
     j = json.load(f)
 
-if sys.argv[1] == "no_float":
-    if j["f_ext"]:
-        retval = ""
-    else:
-        retval = "+define+ECE411_NO_FLOAT"
-    print(retval)
-
 if sys.argv[1] == "arch":
     retval = "rv32im"
     if j["f_ext"]:

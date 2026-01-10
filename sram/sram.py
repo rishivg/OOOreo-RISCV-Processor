@@ -29,7 +29,6 @@ num_w_ports = 0
 word_size = {int(j["word_size"])}
 write_size = {"None" if j["word_size"] == j["write_size"] else int(j["write_size"])}
 num_words = {int(j["num_words"])}
-sim_random_init = {bool(j["random_init"])}
 nominal_corner_only = True
 process_corners = ["TT"]
 supply_voltages = [1.0]
