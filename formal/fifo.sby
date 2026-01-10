@@ -1,0 +1,15 @@
+[options]
+mode prove
+
+[engines]
+smtbmc boolector
+
+[script]
+read -formal ../pkg/types.sv
+read -formal ../hdl/common/sync_fifo.sv
+# Add other files here
+prep -top sync_fifo
+
+[files]
+../pkg/types.sv
+../hdl/common/sync_fifo.sv
