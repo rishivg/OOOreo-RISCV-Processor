@@ -1,0 +1,84 @@
+name: OOOreo CI
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Lint Tools
+        run: ./scripts/install_toolchain.sh
+                
+      - name: Run Lint
+        run: ./scripts/run_ci.sh lint
+
+      - name: Archive Lint Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          path: lint/reports/
+
+  simulation:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        test_elf: [coremark_im.elf, ooo_test.elf]
+    
+    timeout-minutes: 15
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Sim Tools
+        run: |
+          ./scripts/install_toolchain.sh
+          # Additional dep for makefile nproc calc
+          sudo apt-get install -y bc
+
+      - name: Cache Verilated Model
+        id: cache-model
+        uses: actions/cache@v4
+        with:
+          path: sim/verilator/build
+          key: ${{ runner.os }}-verilator-model-${{ hashFiles('hdl/**/*.sv', 'pkg/**/*.sv', 'sim/verilator/**/*.cpp') }}
+
+      - name: Run Simulation (${{ matrix.test_elf }})
+        run: |
+           ./scripts/run_ci.sh sim testcode/${{ matrix.test_elf }}
+
+      - name: Archive Waveforms
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: waveforms-${{ matrix.test_elf }}
+          path: |
+            sim/dump.fst
+            sim/simulation.log
+
+  synthesis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Synthesis Tools
+        run: ./scripts/install_toolchain.sh
+      
+      - name: Cache sv2v
+        id: cache-sv2v
+        uses: actions/cache@v4
+        with:
+          path: fpga/tools/sv2v-Linux
+          key: sv2v-v0.0.13
+
+      - name: Run Synthesis Flow
+        run: ./scripts/run_ci.sh synth
