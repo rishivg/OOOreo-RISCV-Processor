@@ -21,8 +21,6 @@ import uop_types::*;
         logic                   branch_taken;
         logic   [31:0]          pc;
         logic   [3:0]           fu_opcode;
-        logic                   is_call;
-        logic                   is_ret;
     } cb_entry_t;
 
     cb_entry_t              fifo[CB_DEPTH];
@@ -52,11 +50,6 @@ import uop_types::*;
                 fifo[wr_ptr_actual].rob_id <= from_ds.uop.rob_id;
                 fifo[wr_ptr_actual].pc <= from_ds.uop.pc;
                 fifo[wr_ptr_actual].fu_opcode <= from_ds.uop.fu_opcode;
-                fifo[wr_ptr_actual].is_call <= ((from_ds.uop.fu_opcode == BR_JAL) || (from_ds.uop.fu_opcode == BR_JALR)) && 
-                                               ((from_ds.uop.rd_arch == 5'd1) || (from_ds.uop.rd_arch == 5'd5));
-                fifo[wr_ptr_actual].is_ret  <= (from_ds.uop.fu_opcode == BR_JALR) && 
-                                               (from_ds.uop.rd_arch == 5'd0) && 
-                                               ((from_ds.uop.rs1_arch == 5'd1) || (from_ds.uop.rs1_arch == 5'd5));
                 wr_ptr <= (CB_IDX+1)'(wr_ptr + 1);
             end
 
@@ -96,7 +89,5 @@ import uop_types::*;
     assign to_bp.fu_opcode      = fifo[rd_ptr_actual].fu_opcode;
     assign to_bp.branch_taken   = fifo[rd_ptr_actual].branch_taken;
     assign to_bp.target_address = fifo[rd_ptr_actual].target_address;
-    assign to_bp.is_call        = fifo[rd_ptr_actual].is_call;
-    assign to_bp.is_ret         = fifo[rd_ptr_actual].is_ret;
 
 endmodule

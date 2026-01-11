@@ -12,16 +12,6 @@ VER_SRCS  := $(PKG_SRCS) $(HDL_SRCS) $(VER_HVL) $(SRAM_SRCS) $(DW_IP)
 
 TIMEOUT   ?= 10000000
 
-KONATA_FLAG =
-ifdef KANATA
-KONATA_FLAG = +KANATA
-endif
-
-DEBUG_FLAG =
-ifdef DEBUG
-DEBUG_FLAG = +DEBUG
-endif
-
 ECE411_NO_FLOAT = $(shell python3 $(PWD)/../bin/get_options.py no_float)
 
 COMMON_FLAGS = +incdir+$(PWD)/../hvl/common  $(ECE411_NO_FLOAT) +define+DW_SUPPRESS_WARN +incdir+$(DW)/sim_ver
@@ -42,8 +32,6 @@ run_verilator_top_tb: verilator/build/Vtop_tb $(PROG)
 	python3 ../bin/generate_memory_file.py -32 $(PROG)
 	cd verilator && ./build/Vtop_tb \
 		+TIMEOUT_ECE411=$(TIMEOUT) \
-		$(KONATA_FLAG) \
-		$(DEBUG_FLAG) \
 		+CLOCK_PERIOD_PS_ECE411=$(shell python3 $(PWD)/../bin/get_options.py clock) \
 		+BRAM_0_ON_X_ECE411=$(shell python3 $(PWD)/../bin/get_options.py bmem_x) \
 		+MEMLST_ECE411="$(PWD)/bin/memory_32.lst" \
