@@ -15,7 +15,11 @@ module top_tb
     mon_itf #(.CHANNELS(8)) mon_itf(.*);
     monitor #(.CHANNELS(8)) monitor(.itf(mon_itf));
 
+    konata_logger konata_logger_i(.clk(clk), .rst(rst));
     perf_monitor perf_monitor_i(.clk(clk), .rst(rst));
+
+    // Runtime terminal debug (enabled with +DEBUG)
+    rt_debug rt_debug_i(.clk(clk), .rst(rst));
 
     cpu dut(
         .clk            (clk),

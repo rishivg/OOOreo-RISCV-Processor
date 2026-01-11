@@ -62,25 +62,109 @@ import int_rs_types::*;
         );
     end endgenerate
 
-    // Push Logic
-    // A bit nasty
+    ////////////////////////////////////
+    // Free List (O(N) -> O(1) Fix)   //
+    ////////////////////////////////////
+
+    // Parameter for Index Bits
+    localparam INTRS_IDX_BITS = $clog2(INTRS_DEPTH);
+    
+    logic   [INTRS_IDX_BITS-1:0]    freelist    [INTRS_DEPTH];
+    logic   [INTRS_IDX_BITS:0]      fl_head;
+    logic   [INTRS_IDX_BITS:0]      fl_tail;
+    logic   [INTRS_IDX_BITS:0]      fl_count;
+    
+    // Calculate number of allocated ops this cycle
+    logic   [2:0]                   alloc_cnt; // optimized for ID_WIDTH <= 4
+    logic                           free_cnt;
+
+    assign free_cnt = |rs_grant;
+    
+    always_comb begin
+        alloc_cnt = '0;
+        if (from_ds.ready) begin
+            for (int w = 0; w < ID_WIDTH; w++) begin
+                if (from_ds.valid[w]) alloc_cnt++;
+            end
+        end
+    end
+
+    // Encoder for the single grant (since issue width is 1 here)
+    logic   [INTRS_IDX_BITS-1:0]    granted_idx;
+    always_comb begin
+        granted_idx = '0;
+        for (int i = 0; i < INTRS_DEPTH; i++) begin
+            if (rs_grant[i]) begin
+                granted_idx = INTRS_IDX_BITS'(i);
+                break;
+            end
+        end
+    end
+
+    // Free List Sequential Logic
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            fl_head <= '0;
+            fl_tail <= '0; // Empty? No, full.
+            // Initialization: Tail = 0, Head = 0.
+            // Let's say Head points to next item to Pop.
+            // Tail points to next slot to Push.
+            // Full state: Tail == Head (and count says full)
+            fl_count <= INTRS_DEPTH;
+            for(int i=0; i<INTRS_DEPTH; i++) begin
+                freelist[i] <= INTRS_IDX_BITS'(i);
+            end
+             // To indicate full, maybe tail wrapped?
+             // Let's use count as truth.
+             fl_tail <= (INTRS_IDX_BITS+1)'(INTRS_DEPTH); 
+             // Logic: Write at Tail, Read at Head.
+             // Reset: Write 0..N-1. Tail=N. Head=0.
+        end else begin
+            // Update Count
+            fl_count <= fl_count - (INTRS_IDX_BITS+1)'(alloc_cnt) + (INTRS_IDX_BITS+1)'(free_cnt);
+
+            // Update Head (Alloc)
+            fl_head <= fl_head + (INTRS_IDX_BITS+1)'(alloc_cnt);
+
+            // Update Tail (Free) & Write
+            if (free_cnt) begin
+                freelist[fl_tail[INTRS_IDX_BITS-1:0]] <= granted_idx;
+                fl_tail <= fl_tail + 1;
+            end
+        end
+    end
+
+    // Push Logic - Mapped from Free List
     logic   [INTRS_DEPTH-1:0]   [ID_WIDTH-1:0]  entry_push_en_arr;
-    logic   [INTRS_DEPTH-1:0]                   allocated;
 
     always_comb begin
+        logic [1:0]                offset;
+        logic [INTRS_IDX_BITS:0]   ptr;
+        logic [INTRS_IDX_BITS-1:0] target_rs_idx;
+
         for (int i = 0; i < INTRS_DEPTH; i++) begin
             entry_push_en_arr[i] = '0;
         end
-        allocated = '0;
-        for (int w = 0; w < ID_WIDTH; w++) begin
-            if (from_ds.valid[w] && from_ds.ready) begin
-                // Look for first available RS entry not already allocated this cycle
-                for (int i = 0; i < INTRS_DEPTH; i++) begin
-                    if (!rs_valid[(INTRS_IDX)'(unsigned'(i))] && !allocated[i]) begin
-                        entry_push_en_arr[i][w] = 1'b1;
-                        allocated[i] = 1'b1;  // Mark this entry as allocated
-                        break;
+        
+        // Map dispatch packet 'w' to the RS entry from freelist
+        if (from_ds.ready) begin
+            for (int w = 0; w < ID_WIDTH; w++) begin
+                // If this op is valid, give it the next token
+                if (from_ds.valid[w]) begin
+                    // We need to find *which* token is for *which* w.
+                    // If w=0 is valid, it gets head+0.
+                    // If w=1 is valid, it gets head+1 (if w=0 was valid) or head+0 (if w=0 was invalid).
+                    // Calculation of offset:
+                    offset = '0;
+                    for (int k = 0; k < w; k++) begin
+                        if (from_ds.valid[k]) offset++;
                     end
+                    
+                    // Assign
+                    ptr = fl_head + (INTRS_IDX_BITS+1)'(offset);
+                    target_rs_idx = freelist[ptr[INTRS_IDX_BITS-1:0]]; // Modulo addressing
+                    
+                    entry_push_en_arr[target_rs_idx][w] = 1'b1;
                 end
             end
         end
@@ -126,16 +210,7 @@ import int_rs_types::*;
     );
 
     // ready logic
-    logic   [INTRS_IDX:0]    n_available_slots;
-    always_comb begin
-        n_available_slots = '0;
-        for (int i = 0; i < INTRS_DEPTH; i++) begin 
-            if (~rs_valid[i]) begin 
-                n_available_slots = (INTRS_IDX+1)'(n_available_slots + 1);
-            end
-        end
-    end
-    assign from_ds.ready = (n_available_slots >= (INTRS_IDX+1)'(ID_WIDTH));
+    assign from_ds.ready = (fl_count >= (INTRS_IDX_BITS+1)'(ID_WIDTH));
 
     // communicate with prf
     assign to_prf.rs1_phy = issued_entry.rs1_phy;

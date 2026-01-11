@@ -33,9 +33,20 @@ import cpu_params::*;
     logic   [IF_WIDTH-1:0]          predict_taken;
     logic   [IF_WIDTH-1:0]          predict_taken_gshare;
     logic   [IF_WIDTH-1:0]  [31:0]  predict_target;
+    logic   [IF_WIDTH-1:0]  [31:0]  ubtb_target;
 
     logic   predict_taken_en;
     logic   [IF_WIDTH_IDX-1:0]  predict_taken_idx;
+
+    // RAS Signals
+    logic   [IF_WIDTH-1:0]          pred_is_call;
+    logic   [IF_WIDTH-1:0]          pred_is_ret;
+    logic   [31:0]                  ras_target;
+    logic   [IF_WIDTH-1:0]  [31:0]  fetch_pcs;
+
+    generate for(genvar i=0; i<IF_WIDTH; i++) begin 
+        assign fetch_pcs[i] = blk_pc + (unsigned'(i)*4);
+    end endgenerate
 
     always_ff @(posedge clk) begin
         prev_rst <= rst;
@@ -100,9 +111,29 @@ import cpu_params::*;
         .from_cb                (from_cb),
         .predict_taken_gshare   (predict_taken_gshare),
         .blk_pc                 (blk_pc),
-        .predict_target         (predict_target),
-	    .predict_taken		    (predict_taken)
+        .predict_target         (ubtb_target),
+	    .predict_taken		    (predict_taken),
+        .pred_is_call           (pred_is_call),
+        .pred_is_ret            (pred_is_ret)
     );
+
+    ras ras_i (
+        .clk        (clk),
+        .rst        (rst),
+        .valid      (1'b1), // Inputs are qualified by ubtb logic within ubtb
+        .is_call    (pred_is_call),
+        .is_ret     (pred_is_ret),
+        .pc         (fetch_pcs),
+        .predict_target (ras_target)
+    );
+
+    // Mux RAS Target
+    always_comb begin
+        for (int i = 0; i < IF_WIDTH; i++) begin
+            if (pred_is_ret[i]) predict_target[i] = ras_target;
+            else                predict_target[i] = ubtb_target[i];
+        end
+    end
 
     assign if1_ready = to_fifo.ready;
     assign to_fifo.valid = if1_valid;

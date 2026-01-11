@@ -535,13 +535,17 @@ import cpu_params::*;
     logic   [3:0]           fu_opcode;
     logic                   branch_taken;
     logic   [31:0]          target_address;
+    logic                   is_call;
+    logic                   is_ret;
 
     modport cb (
         output              update_en,
         output              pc,
         output              fu_opcode,
         output              branch_taken,
-        output              target_address
+        output              target_address,
+        output              is_call,
+        output              is_ret
     );
 
     modport bp (
@@ -549,7 +553,9 @@ import cpu_params::*;
         input               pc,
         input               fu_opcode,
         input               branch_taken,
-        input               target_address
+        input               target_address,
+        input               is_call,
+        input               is_ret
     );
 
 endinterface

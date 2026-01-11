@@ -10,7 +10,9 @@ import uop_types::*;
     input   logic [IF_WIDTH-1:0]            predict_taken_gshare,
     input   logic [31:0]                    blk_pc,
     output  logic [IF_WIDTH-1:0]  [31:0]    predict_target,
-    output  logic [IF_WIDTH-1:0]	        predict_taken
+    output  logic [IF_WIDTH-1:0]	        predict_taken,
+    output  logic [IF_WIDTH-1:0]            pred_is_call,
+    output  logic [IF_WIDTH-1:0]            pred_is_ret
 );
     localparam  unsigned    IF_BLK_SIZE = IF_WIDTH * 4;
     
@@ -19,6 +21,14 @@ import uop_types::*;
         logic   [31:0]              target;
         logic   [UBTB_TAG_IDX-1:0]  tag;
     } ubtb_entry_t;
+
+    typedef struct packed {
+        logic                       valid;
+        logic   [31:0]              target;
+        logic   [UBTB_TAG_IDX-1:0]  tag;
+        logic                       is_call;
+        logic                       is_ret;
+    } ubtb_j_entry_t;
 
     typedef enum logic [2:0] {  
         INSERT          = 3'b001,
@@ -78,7 +88,7 @@ import uop_types::*;
         end
     end
 
-    ubtb_entry_t            j_ubtb     [UBTB_DEPTH];
+    ubtb_j_entry_t          j_ubtb     [UBTB_DEPTH];
     ubtb_update_t           j_ubtb_update;
     logic [UBTB_IDX-1:0]    j_update_idx;
     logic [UBTB_IDX-1:0]    j_insert_idx;
@@ -96,14 +106,20 @@ import uop_types::*;
                     j_ubtb[j_insert_idx].valid    <= '1;
                     j_ubtb[j_insert_idx].tag      <= from_cb.pc[UBTB_TAG_IDX+1:2];
                     j_ubtb[j_insert_idx].target   <= from_cb.target_address;
+                    j_ubtb[j_insert_idx].is_call  <= from_cb.is_call;
+                    j_ubtb[j_insert_idx].is_ret   <= from_cb.is_ret;
                 end
                 UPDATE: begin
                     j_ubtb[j_update_idx].tag      <= from_cb.pc[UBTB_TAG_IDX+1:2];
                     j_ubtb[j_update_idx].target   <= from_cb.target_address;
+                    j_ubtb[j_update_idx].is_call  <= from_cb.is_call;
+                    j_ubtb[j_update_idx].is_ret   <= from_cb.is_ret;
                 end
                 OVERWRITE: begin
                     j_ubtb[j_ubtb_head].tag       <= from_cb.pc[UBTB_TAG_IDX+1:2];
                     j_ubtb[j_ubtb_head].target    <= from_cb.target_address;
+                    j_ubtb[j_ubtb_head].is_call   <= from_cb.is_call;
+                    j_ubtb[j_ubtb_head].is_ret    <= from_cb.is_ret;
                     j_ubtb_head <= j_ubtb_head + 1'b1;
                 end
                 default: begin
@@ -134,6 +150,8 @@ import uop_types::*;
     generate for (genvar w = 0; w < IF_WIDTH; w++) begin
         always_comb begin
 	        predict_taken[w] = 1'b0;
+            pred_is_call[w]  = 1'b0;
+            pred_is_ret[w]   = 1'b0;
             pc_in[w] = blk_pc + unsigned'(w) * 4;
             predict_target[w] = blk_pc + unsigned'(w) * 4 + 4;
             for (int i = 0; i < UBTB_DEPTH; i++) begin
@@ -146,6 +164,8 @@ import uop_types::*;
                 if (j_ubtb[i].valid && (j_ubtb[i].tag == pc_in[w][UBTB_TAG_IDX+1:2])) begin
                     predict_target[w] = j_ubtb[i].target;
 		            predict_taken[w] = 1'b1;
+                    pred_is_call[w]  = j_ubtb[i].is_call;
+                    pred_is_ret[w]   = j_ubtb[i].is_ret;
                     break;
                 end
             end
