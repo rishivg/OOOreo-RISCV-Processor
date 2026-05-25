@@ -253,19 +253,12 @@ import int_rs_types::*;
     assign cdb_div_ready = 1'b1;
     assign cdb_reg_in = (fu_div_valid) ? fu_div_cdb_out : fu_mul_cdb_out;
 
-    pipeline_reg #(
-        .DATA_T (fu_cdb_reg_t)
-    ) cdb_reg (
-        .clk        (clk),
-        .rst        (rst),
-        .flush      (1'b0),
-        .prv_valid  (cdb_valid),
-        .prv_ready  (),
-        .nxt_valid  (cdb_out_valid),
-        .nxt_ready  (1'b1),
-        .prv_data   (cdb_reg_in),
-        .nxt_data   (cdb_reg_out)
-    );
+    // Pass-through: broadcast the mul/div result the cycle it completes instead
+    // of a cycle later. Mul/div results are not on the fast-bypass network, so
+    // this register sat directly on the mul/div-to-use critical path. The FU
+    // outputs are already registered (product/quotient pipelines).
+    assign cdb_out_valid = cdb_valid;
+    assign cdb_reg_out   = cdb_reg_in;
 
     assign fu_cdb_out.valid = cdb_out_valid;
     assign fu_cdb_out.rob_id = cdb_reg_out.rob_id;

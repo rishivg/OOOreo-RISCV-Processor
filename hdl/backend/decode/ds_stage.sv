@@ -85,23 +85,31 @@ import uop_types::*;
     // Mux for selecting the ready signal
     generate for (genvar i = 0; i < ID_WIDTH; i++) begin
         always_comb begin
-            unique case (rs_type[i])
-                RS_INT: begin
-                    dispatch_ready[i] = to_int_rs.ready; // Collect ready signal from INT Reservation Stations
-                end
-                RS_INTM: begin
-                    dispatch_ready[i] = to_intm_rs.ready; // Collect ready signal from INTM Reservation Stations
-                end
-                RS_BR: begin
-                    dispatch_ready[i] = to_br_rs.ready; // Collect ready signal from BR Reservation Stations
-                end
-                RS_MEM: begin
-                    dispatch_ready[i] = to_mem_rs.ready; // Collect ready signal from MEM Reservation Stations
-                end
-                default: begin
-                    dispatch_ready[i] = '0;
-                end
-            endcase
+            // An invalid slot dispatches nothing, so it must not contribute a
+            // not-ready to prv_ready. rs_type[i] is don't-care when the slot is
+            // invalid (decoded from masked instruction bits), so its target RS
+            // being full could otherwise needlessly stall a valid sibling slot.
+            if (!dispatch_valid[i]) begin
+                dispatch_ready[i] = 1'b1;
+            end else begin
+                unique case (rs_type[i])
+                    RS_INT: begin
+                        dispatch_ready[i] = to_int_rs.ready; // Collect ready signal from INT Reservation Stations
+                    end
+                    RS_INTM: begin
+                        dispatch_ready[i] = to_intm_rs.ready; // Collect ready signal from INTM Reservation Stations
+                    end
+                    RS_BR: begin
+                        dispatch_ready[i] = to_br_rs.ready; // Collect ready signal from BR Reservation Stations
+                    end
+                    RS_MEM: begin
+                        dispatch_ready[i] = to_mem_rs.ready; // Collect ready signal from MEM Reservation Stations
+                    end
+                    default: begin
+                        dispatch_ready[i] = '0;
+                    end
+                endcase
+            end
         end
     end endgenerate
 
