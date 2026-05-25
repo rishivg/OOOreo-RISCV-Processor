@@ -64,13 +64,32 @@ import cpu_params::*;
             fold_tag[i % TAGE_TAG_BITS] = fold_tag[i % TAGE_TAG_BITS] ^ h[i];
     endfunction
 
-    function automatic logic [TAGE_IDX-1:0] idx_of(input logic [31:0] pc, input logic [GHR_LEN-1:0] h, input int unsigned L);
-        idx_of = pc[TAGE_IDX+1:2] ^ fold_idx(h, L);
+    // Combine the PC with a pre-computed history fold. The fold (an XOR tree
+    // over the global history) depends only on (history, length), not the PC or
+    // fetch slot, so it is computed once per component below and shared.
+    function automatic logic [TAGE_IDX-1:0] idx_comb(input logic [31:0] pc, input logic [TAGE_IDX-1:0] fidx);
+        idx_comb = pc[TAGE_IDX+1:2] ^ fidx;
     endfunction
 
-    function automatic logic [TAGE_TAG_BITS-1:0] tag_of(input logic [31:0] pc, input logic [GHR_LEN-1:0] h, input int unsigned L);
-        tag_of = pc[TAGE_TAG_BITS+1:2] ^ fold_tag(h, L) ^ pc[2*TAGE_TAG_BITS+1:TAGE_TAG_BITS+2];
+    function automatic logic [TAGE_TAG_BITS-1:0] tag_comb(input logic [31:0] pc, input logic [TAGE_TAG_BITS-1:0] ftag);
+        tag_comb = pc[TAGE_TAG_BITS+1:2] ^ ftag ^ pc[2*TAGE_TAG_BITS+1:TAGE_TAG_BITS+2];
     endfunction
+
+    // Per-component history folds, computed once each: from the speculative
+    // history for prediction (shared by both fetch slots) and from the carried
+    // snapshot for training at commit (shared by the hit check and allocation).
+    logic [TAGE_IDX-1:0]        fidx_s [TAGE_NUM];   // speculative (prediction)
+    logic [TAGE_TAG_BITS-1:0]   ftag_s [TAGE_NUM];
+    logic [TAGE_IDX-1:0]        fidx_c [TAGE_NUM];   // committed snapshot (training)
+    logic [TAGE_TAG_BITS-1:0]   ftag_c [TAGE_NUM];
+    always_comb begin
+        for (int t = 0; t < TAGE_NUM; t++) begin
+            fidx_s[t] = fold_idx(ghr_spec,    HISTLEN[t]);
+            ftag_s[t] = fold_tag(ghr_spec,    HISTLEN[t]);
+            fidx_c[t] = fold_idx(from_cb.ghr, HISTLEN[t]);
+            ftag_c[t] = fold_tag(from_cb.ghr, HISTLEN[t]);
+        end
+    end
 
     //---------------------------------------------------------------------------
     // Storage
@@ -99,8 +118,8 @@ import cpu_params::*;
             pc_in[i] = blk_pc + 32'(unsigned'(i)) * 32'd4;
             base_pred[i] = bimodal[pc_in[i][PHT_IDX+1:2]] >= 2'b10;
             for (int t = 0; t < TAGE_NUM; t++) begin
-                p_ent[i][t] = tt[t][idx_of(pc_in[i], ghr_spec, HISTLEN[t])];
-                p_hit[i][t] = (p_ent[i][t].tag == tag_of(pc_in[i], ghr_spec, HISTLEN[t]));
+                p_ent[i][t] = tt[t][idx_comb(pc_in[i], fidx_s[t])];
+                p_hit[i][t] = (p_ent[i][t].tag == tag_comb(pc_in[i], ftag_s[t]));
             end
             // longest hit provides; next-longest (else base) is the alternate
             prov_v = 1'b0;
@@ -152,9 +171,9 @@ import cpu_params::*;
         base_pred_c = bimodal[from_cb.pc[PHT_IDX+1:2]] >= 2'b10;
 
         for (int t = 0; t < TAGE_NUM; t++) begin
-            u_idx[t] = idx_of(from_cb.pc, from_cb.ghr, HISTLEN[t]);
+            u_idx[t] = idx_comb(from_cb.pc, fidx_c[t]);
             u_ent[t] = tt[t][u_idx[t]];
-            u_hit[t] = (u_ent[t].tag == tag_of(from_cb.pc, from_cb.ghr, HISTLEN[t]));
+            u_hit[t] = (u_ent[t].tag == tag_comb(from_cb.pc, ftag_c[t]));
         end
 
         // provider = longest hit; alt = next-longest hit (else base)
@@ -237,7 +256,7 @@ import cpu_params::*;
                         end
                     end else if (mispredict && alloc_valid && (($clog2(TAGE_NUM))'(t) == alloc_table)) begin
                         // allocate a new entry in a longer component
-                        tt[t][u_idx[t]].tag <= tag_of(from_cb.pc, from_cb.ghr, HISTLEN[t]);
+                        tt[t][u_idx[t]].tag <= tag_comb(from_cb.pc, ftag_c[t]);
                         tt[t][u_idx[t]].ctr <= u_taken ? 3'sb000 : 3'sb111;   // weakly toward outcome
                         tt[t][u_idx[t]].u   <= '0;
                     end else if (mispredict && !alloc_valid && (unsigned'(t) >= alloc_start)) begin
