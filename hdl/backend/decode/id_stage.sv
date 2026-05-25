@@ -73,6 +73,7 @@ import uop_types::*;
         assign uops[i].rs2_arch = rs2_arch[i];
         assign uops[i].predict_taken = from_fifo.packet.predict_taken[i];
         assign uops[i].predict_target = from_fifo.packet.predict_target[i];
+        assign uops[i].ghr = from_fifo.packet.ghr;
     end endgenerate
 
     //////////////////////////

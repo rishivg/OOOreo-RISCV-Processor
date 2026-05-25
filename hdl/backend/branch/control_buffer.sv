@@ -21,6 +21,7 @@ import uop_types::*;
         logic                   branch_taken;
         logic   [31:0]          pc;
         logic   [3:0]           fu_opcode;
+        logic   [PHT_IDX-1:0]   ghr;        // gshare snapshot captured when predicted
     } cb_entry_t;
 
     cb_entry_t              fifo[CB_DEPTH];
@@ -50,6 +51,7 @@ import uop_types::*;
                 fifo[wr_ptr_actual].rob_id <= from_ds.uop.rob_id;
                 fifo[wr_ptr_actual].pc <= from_ds.uop.pc;
                 fifo[wr_ptr_actual].fu_opcode <= from_ds.uop.fu_opcode;
+                fifo[wr_ptr_actual].ghr <= from_ds.uop.ghr;
                 wr_ptr <= (CB_IDX+1)'(wr_ptr + 1);
             end
 
@@ -89,5 +91,6 @@ import uop_types::*;
     assign to_bp.fu_opcode      = fifo[rd_ptr_actual].fu_opcode;
     assign to_bp.branch_taken   = fifo[rd_ptr_actual].branch_taken;
     assign to_bp.target_address = fifo[rd_ptr_actual].target_address;
+    assign to_bp.ghr            = fifo[rd_ptr_actual].ghr;
 
 endmodule

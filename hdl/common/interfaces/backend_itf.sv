@@ -535,13 +535,15 @@ import cpu_params::*;
     logic   [3:0]           fu_opcode;
     logic                   branch_taken;
     logic   [31:0]          target_address;
+    logic   [PHT_IDX-1:0]   ghr;        // history snapshot used when this branch was predicted
 
     modport cb (
         output              update_en,
         output              pc,
         output              fu_opcode,
         output              branch_taken,
-        output              target_address
+        output              target_address,
+        output              ghr
     );
 
     modport bp (
@@ -549,7 +551,8 @@ import cpu_params::*;
         input               pc,
         input               fu_opcode,
         input               branch_taken,
-        input               target_address
+        input               target_address,
+        input               ghr
     );
 
 endinterface

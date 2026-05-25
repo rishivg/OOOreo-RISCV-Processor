@@ -86,12 +86,15 @@ import cpu_params::*;
         .icache_itf             (icache_itf)
     );
 
+    logic   [PHT_IDX-1:0]   ghr_snapshot;
+
     gshare gshare_i(
         .clk                    (clk),
         .rst                    (rst),
         .from_cb                (from_cb),
-        .blk_pc                 (blk_pc), 
-        .predict_taken          (predict_taken_gshare)              
+        .blk_pc                 (blk_pc),
+        .ghr_snapshot           (ghr_snapshot),
+        .predict_taken          (predict_taken_gshare)
     );
 
     ubtb ubtb_i(
@@ -114,6 +117,7 @@ import cpu_params::*;
         assign to_fifo.packet.predict_target[i] = predict_target[i];
     end endgenerate
     assign to_fifo.packet.pc = blk_pc;
+    assign to_fifo.packet.ghr = ghr_snapshot;
 
     generate if (ID_WIDTH == 1) begin
         assign to_fifo.packet.valid[0] = 1'b1;

@@ -214,6 +214,7 @@ import cpu_params::*;
         logic   [IF_WIDTH-1:0]  [31:0]  predict_target;
         logic                   [31:0]  pc;
         logic   [IF_WIDTH-1:0]          valid;
+        logic   [PHT_IDX-1:0]           ghr;        // gshare history snapshot when predicted
     } fetch_packet_t;
 
 endpackage
@@ -320,6 +321,7 @@ import cpu_params::*;
 
         logic                   predict_taken; // Branch prediction
         logic   [31:0]          predict_target; // Branch prediction target
+        logic   [PHT_IDX-1:0]   ghr;            // gshare history snapshot when predicted
     } uop_t;
 
 endpackage
