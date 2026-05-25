@@ -126,12 +126,31 @@ import lsu_types::*;
     // Issue Logic //
     /////////////////
 
+    // AGU-address bypass: the single load whose address is being delivered by
+    // the AGU this cycle can be disambiguated and issued to the dcache the same
+    // cycle, instead of waiting for the address to register into its entry. Only
+    // one address arrives per cycle (single AGU), so at most one slot is bypassed.
+    logic   [31:0]  eff_addr   [LDQ_DEPTH];
+    logic   [3:0]   eff_mask   [LDQ_DEPTH];
+    logic           eff_avalid [LDQ_DEPTH];
+    logic           agu_hit    [LDQ_DEPTH];
+
+    always_comb begin
+        for (int i = 0; i < LDQ_DEPTH; i++) begin
+            agu_hit[i]    = from_agu.valid && ldq_arr[i].valid && ~ldq_arr[i].addr_valid
+                            && (ldq_arr[i].rob_id == from_agu.data.rob_id);
+            eff_addr[i]   = agu_hit[i] ? from_agu.data.addr : ldq_arr[i].addr;
+            eff_mask[i]   = agu_hit[i] ? from_agu.data.mask : ldq_arr[i].mask;
+            eff_avalid[i] = ldq_arr[i].addr_valid || agu_hit[i];
+        end
+    end
+
     generate for (genvar i = 0; i < LDQ_DEPTH; i++) begin
         assign from_stq.ldq_tracker[i] = ldq_arr[i].track_stq_ptr;
-        assign from_stq.ldq_addr[i] = ldq_arr[i].addr;
-        assign from_stq.ldq_rmask[i] = ldq_arr[i].mask;
-        assign from_stb.ldq_addr[i] = ldq_arr[i].addr;
-        assign from_stb.ldq_rmask[i] = ldq_arr[i].mask;
+        assign from_stq.ldq_addr[i] = eff_addr[i];
+        assign from_stq.ldq_rmask[i] = eff_mask[i];
+        assign from_stb.ldq_addr[i] = eff_addr[i];
+        assign from_stb.ldq_rmask[i] = eff_mask[i];
     end endgenerate
 
     always_comb begin
@@ -157,7 +176,7 @@ import lsu_types::*;
         // as a memory-ordering violation (see below). Already-issued speculative
         // loads (.issued) stay parked for violation checking and don't re-issue.
         for (int unsigned i = 0; i < LDQ_DEPTH; i++) begin
-            if (ldq_arr[i].valid && ldq_arr[i].addr_valid && ~ldq_arr[i].issued) begin
+            if (ldq_arr[i].valid && eff_avalid[i] && ~ldq_arr[i].issued) begin
                 if ((!from_stq.known_conflict[i] && !from_stb.has_conflicting_store[i])
                     || from_stq.forward_en[i]) begin
                     issue_en = 1'b1;
@@ -199,21 +218,21 @@ import lsu_types::*;
     always_ff @(posedge clk) begin
         if (dmem.valid && dmem.ready) begin
             load_stage_reg.rob_id        <= ldq_arr[issue_idx].rob_id;
-            load_stage_reg.addr_2        <= ldq_arr[issue_idx].addr[1:0];
+            load_stage_reg.addr_2        <= eff_addr[issue_idx][1:0];
             load_stage_reg.fu_opcode     <= ldq_arr[issue_idx].fu_opcode;
             load_stage_reg.rd_arch       <= ldq_arr[issue_idx].rd_arch;
             load_stage_reg.rd_phy        <= ldq_arr[issue_idx].rd_phy;
             load_stage_reg.addr_dbg      <= dmem.addr;
-            load_stage_reg.mask_dbg      <= ldq_arr[issue_idx].mask;
-            load_stage_reg.rs1_value_dbg <= ldq_arr[issue_idx].rs1_value_dbg;
-            load_stage_reg.rs2_value_dbg <= ldq_arr[issue_idx].rs2_value_dbg;
+            load_stage_reg.mask_dbg      <= eff_mask[issue_idx];
+            load_stage_reg.rs1_value_dbg <= agu_hit[issue_idx] ? from_agu.data.rs1_value_dbg : ldq_arr[issue_idx].rs1_value_dbg;
+            load_stage_reg.rs2_value_dbg <= agu_hit[issue_idx] ? from_agu.data.rs2_value_dbg : ldq_arr[issue_idx].rs2_value_dbg;
             load_stage_reg.forward_en    <= from_stq.forward_en[issue_idx];
             load_stage_reg.forward_wdata <= from_stq.forward_wdata[issue_idx];
         end
     end
 
-    assign dmem.rmask = ldq_arr[issue_idx].mask;
-    assign dmem.addr =  {ldq_arr[issue_idx].addr[31:2], 2'b00};
+    assign dmem.rmask = eff_mask[issue_idx];
+    assign dmem.addr =  {eff_addr[issue_idx][31:2], 2'b00};
 
     logic   [1:0]           addr_2;
     assign addr_2 = load_stage_reg.addr_2;

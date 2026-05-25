@@ -167,12 +167,17 @@ import lsu_types::*;
     assign mem_viol_detect = top_tb.dut.backend_i.ldq_rob_itf.violation;
     assign mem_viol_flush  = top_tb.dut.backend_i.rob_i.viol_flush;
 
+    logic           ldq_real_ready;     // an un-issued load has its address (a genuine issue candidate)
+    logic   [31:0]  ld_real_block_cyc;  // such a load exists but nothing issues -> real disambiguation stall
+
     always_comb begin
         ldq_addr_ready = 1'b0;
+        ldq_real_ready = 1'b0;
         for (int i = 0; i < LDQ_DEPTH; i++) begin
             if (top_tb.dut.backend_i.lsu_i.ldq_i.ldq_arr[i].valid &&
                 top_tb.dut.backend_i.lsu_i.ldq_i.ldq_arr[i].addr_valid) begin
                 ldq_addr_ready = 1'b1;
+                if (~top_tb.dut.backend_i.lsu_i.ldq_i.ldq_arr[i].issued) ldq_real_ready = 1'b1;
             end
         end
     end
@@ -188,6 +193,7 @@ import lsu_types::*;
             ld_resp_cnt             <= '0;
             ld_block_cycles         <= '0;
             ld_block_unknown_cycles <= '0;
+            ld_real_block_cyc       <= '0;
             mem_viol_detect_cnt     <= '0;
             mem_viol_flush_cnt      <= '0;
         end else begin
@@ -196,6 +202,7 @@ import lsu_types::*;
                 ld_block_cycles <= ld_block_cycles + 1;
                 if (stq_head_unknown) ld_block_unknown_cycles <= ld_block_unknown_cycles + 1;
             end
+            if (ldq_real_ready && ~ldq_issue_en) ld_real_block_cyc <= ld_real_block_cyc + 1;
             if (mem_viol_detect) mem_viol_detect_cnt <= mem_viol_detect_cnt + 1;
             if (mem_viol_flush)  mem_viol_flush_cnt  <= mem_viol_flush_cnt + 1;
         end
@@ -226,6 +233,7 @@ import lsu_types::*;
         $display("Loads completed        : %0d", ld_resp_cnt);
         $display("Load disambig-block cyc: %0d", ld_block_cycles);
         $display("  (oldest store unknown): %0d", ld_block_unknown_cycles);
+        $display("  (real, un-issued load): %0d", ld_real_block_cyc);
         $display("Spec-load violations    : %0d", mem_viol_detect_cnt);
         $display("Spec-load viol flushes  : %0d", mem_viol_flush_cnt);
         $display("--- Mul / Div ---");
