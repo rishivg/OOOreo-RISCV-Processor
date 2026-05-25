@@ -61,7 +61,7 @@ package cpu_params;
     //       };
 
     // GShare Parameters
-    localparam  unsigned    PHT_DEPTH       = 512;
+    localparam  unsigned    PHT_DEPTH       = 4096;
     localparam  unsigned    PHT_IDX         = $clog2(PHT_DEPTH);
 
     // uBTB Parameters
