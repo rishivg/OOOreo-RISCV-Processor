@@ -58,11 +58,11 @@ if sys.argv[1] == "min_power":
     print(int(j["synth"]["min_power"]))
 
 if sys.argv[1] == "synth_inc_iter":
-    iter = int(j["synth"]["inc_iter"])
-    if iter > 10 or iter < 0:
+    n_iter = int(j["synth"]["inc_iter"])
+    if n_iter > 10 or n_iter < 0:
         print("Error: Synthesis incremental iterations need to be within 0 and 10", file=sys.stderr)
         exit(1)
-    print(int(j["synth"]["inc_iter"]))
+    print(n_iter)
 
 if sys.argv[1] == "synth_cmd" or sys.argv[1] == "synth_cmd_inc":
     cmd = ""

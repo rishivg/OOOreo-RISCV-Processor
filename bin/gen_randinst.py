@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 import random
 
 # Define register names for readability
@@ -42,7 +44,6 @@ def generate_aligned_imm():
 # I-type instruction format (load)
 def generate_i_load_type(instr):
     rd = generate_register()
-    rs1 = generate_register()
     if instr in ['lh', 'lhu']:
         imm = generate_aligned_imm() * 2
     elif instr == 'lw':
@@ -50,7 +51,6 @@ def generate_i_load_type(instr):
     else:
         imm = generate_imm()
     return f"{instr} {rd}, {imm}(x0)"
-    # return f"{instr} {rd}, {imm}({rs1})"
 
 # U-type instruction format
 def generate_u_type(instr):
@@ -60,7 +60,6 @@ def generate_u_type(instr):
 
 # S-type instruction format (store instructions)
 def generate_s_type(instr):
-    rs1 = generate_register()
     rs2 = generate_register()
     if instr == 'sh':
         imm = generate_aligned_imm() * 2
@@ -68,7 +67,6 @@ def generate_s_type(instr):
         imm = generate_aligned_imm() * 4
     else:
         imm = generate_imm()
-    # return f"{instr} {rs2}, {imm}({rs1})"
     return f"{instr} {rs2}, {imm}(x0)"
 
 # Generate a random instruction based on the instruction format
