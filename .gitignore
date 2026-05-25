@@ -1,0 +1,10 @@
+# Editor / OS / Python junk
+__pycache__/
+*.pyc
+*.swp
+*.swo
+*~
+.DS_Store
+
+# NFS lock-file artifacts
+.nfs*

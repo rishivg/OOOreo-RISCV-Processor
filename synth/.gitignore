@@ -4,3 +4,5 @@ reports
 outputs
 *.log
 default.svf
+*.ddc
+.nfs*
