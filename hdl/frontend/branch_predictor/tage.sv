@@ -87,18 +87,41 @@ import cpu_params::*;
     logic                           p_hit       [IF_WIDTH][TAGE_NUM];
     logic                           base_pred   [IF_WIDTH];
 
+    // Policy counter: when a provider entry is freshly allocated (weak ctr,
+    // u==0) its prediction is unreliable, so fall back to the alternate
+    // prediction while this counter's MSB is set (use_alt_on_newly_allocated).
+    logic [3:0]                     use_alt_on_na;
+
     always_comb begin
         for (int i = 0; i < IF_WIDTH; i++) begin
+            automatic logic prov_v;
+            automatic int   prov_t;
+            automatic logic alt_p;
             pc_in[i] = blk_pc + 32'(unsigned'(i)) * 32'd4;
             base_pred[i] = bimodal[pc_in[i][PHT_IDX+1:2]] >= 2'b10;
-            predict_taken[i] = base_pred[i];
             for (int t = 0; t < TAGE_NUM; t++) begin
                 p_ent[i][t] = tt[t][idx_of(pc_in[i], ghr_spec, HISTLEN[t])];
                 p_hit[i][t] = (p_ent[i][t].tag == tag_of(pc_in[i], ghr_spec, HISTLEN[t]));
             end
-            // longest hitting component provides the prediction
+            // longest hit provides; next-longest (else base) is the alternate
+            prov_v = 1'b0;
+            prov_t = 0;
+            alt_p  = base_pred[i];
             for (int t = 0; t < TAGE_NUM; t++) begin
-                if (p_hit[i][t]) predict_taken[i] = (p_ent[i][t].ctr >= 0);
+                if (p_hit[i][t]) begin
+                    alt_p  = prov_v ? (p_ent[i][prov_t].ctr >= 0) : base_pred[i];
+                    prov_v = 1'b1;
+                    prov_t = t;
+                end
+            end
+            if (prov_v && (p_ent[i][prov_t].u == '0)
+                && ((p_ent[i][prov_t].ctr == 0) || (p_ent[i][prov_t].ctr == -1))
+                && use_alt_on_na[3]) begin
+                predict_taken[i] = alt_p;                          // weak provider: trust the alternate
+            end else if (prov_v) begin
+                predict_taken[i] = (p_ent[i][prov_t].ctr >= 0);
+            end else begin
+                predict_taken[i] = base_pred[i];
             end
         end
     end
@@ -117,6 +140,7 @@ import cpu_params::*;
     logic                        u_provider_valid;
     logic                        u_prov_pred;
     logic                        u_alt_pred;
+    logic                        u_prov_weak;    // provider entry is freshly allocated (weak ctr, u==0)
     logic                        final_pred;
     logic                        mispredict;
 
@@ -147,7 +171,10 @@ import cpu_params::*;
             end
         end
         u_prov_pred = u_provider_valid ? (u_ent[u_provider].ctr >= 0) : base_pred_c;
-        final_pred  = u_prov_pred;
+        u_prov_weak = u_provider_valid && (u_ent[u_provider].u == '0)
+                      && ((u_ent[u_provider].ctr == 0) || (u_ent[u_provider].ctr == -1));
+        // effective prediction the front-end acted on (alt for weak providers)
+        final_pred  = (u_prov_weak && use_alt_on_na[3]) ? u_alt_pred : u_prov_pred;
         mispredict  = (final_pred != u_taken);
 
         // allocation search: first component longer than the provider with u==0
@@ -175,6 +202,7 @@ import cpu_params::*;
         if (rst) begin
             ghr_spec   <= '0;
             ghr_commit <= '0;
+            use_alt_on_na <= 4'd8;
             for (int i = 0; i < PHT_DEPTH; i++) bimodal[i] <= 2'b01;
             for (int t = 0; t < TAGE_NUM; t++)
                 for (int j = 0; j < TAGE_DEPTH; j++) tt[t][j] <= '0;
@@ -184,6 +212,13 @@ import cpu_params::*;
             else if (spec_update_en)  ghr_spec <= ghr_spec_fetch;
 
             if (from_cb.update_en) begin
+                // tune use_alt_on_na when a freshly-allocated provider disagreed
+                // with its alternate: reward whichever was right
+                if (u_prov_weak && (u_prov_pred != u_alt_pred)) begin
+                    if (u_alt_pred == u_taken) use_alt_on_na <= (use_alt_on_na == 4'hF) ? use_alt_on_na : use_alt_on_na + 4'd1;
+                    else                       use_alt_on_na <= (use_alt_on_na == 4'h0) ? use_alt_on_na : use_alt_on_na - 4'd1;
+                end
+
                 // base predictor learns only for branches with no tagged provider
                 if (!u_provider_valid) begin
                     if (u_taken) bimodal[from_cb.pc[PHT_IDX+1:2]] <= (bimodal[from_cb.pc[PHT_IDX+1:2]] == 2'b11) ? 2'b11 : bimodal[from_cb.pc[PHT_IDX+1:2]] + 2'b01;
