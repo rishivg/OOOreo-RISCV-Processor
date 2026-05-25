@@ -90,23 +90,20 @@ import lsu_types::*;
     //////////////////////////////////
 
     logic           mul_start;
-    logic           div1_start;
-    logic           div2_start;
+    logic           div_start;
     logic   [31:0]  mul_cnt;
     logic   [31:0]  div_cnt;
 
-    assign mul_start  = top_tb.dut.backend_i.intm_rs_gen.intm_rs_i.fu_mul_i.mul_start;
-    assign div1_start = top_tb.dut.backend_i.intm_rs_gen.intm_rs_i.fu_div_i.fu_div_1_i.div_start;
-    assign div2_start = top_tb.dut.backend_i.intm_rs_gen.intm_rs_i.fu_div_i.fu_div_2_i.div_start;
+    assign mul_start = top_tb.dut.backend_i.intm_rs_gen.intm_rs_i.fu_mul_i.mul_start;
+    assign div_start = top_tb.dut.backend_i.intm_rs_gen.intm_rs_i.fu_div_i.div_start;
 
     always_ff @(posedge clk) begin
         if (rst) begin
             mul_cnt <= '0;
             div_cnt <= '0;
         end else begin
-            if (mul_start)  mul_cnt <= mul_cnt + 1;
-            if (div1_start) div_cnt <= div_cnt + 1;
-            if (div2_start) div_cnt <= div_cnt + 1;
+            if (mul_start) mul_cnt <= mul_cnt + 1;
+            if (div_start) div_cnt <= div_cnt + 1;
         end
     end
 
