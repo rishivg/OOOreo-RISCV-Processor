@@ -156,16 +156,6 @@ import lsu_types::*;
     always_comb begin
         issue_en  = '0;
         issue_idx = '0;
-        // First consider forwarding from STQ, this requires no interaction with DCache
-        // for (int unsigned i = 0; i < LDQ_DEPTH; i++) begin
-        //     if (ldq_arr[i].valid && ldq_arr[i].addr_valid) begin
-        //         if ((ldq_arr[i].track_stq_ptr != '0) && from_stq.has_conflicting_store[i] && from_stq.forward_en[i]) begin
-        //             issue_en = 1'b1;
-        //             issue_idx = (LDQ_IDX)'(i);
-        //             break;
-        //         end
-        //     end
-        // end
         // Issue when there is no conflicting store, OR when the load can be
         // fully satisfied by forwarding from a single covering store (which
         // shadows any older store, so the store-buffer check is unnecessary).
@@ -289,39 +279,10 @@ import lsu_types::*;
     assign rvfi_reg_in.mask_dbg      = load_stage_reg.mask_dbg;
     assign rvfi_reg_in.rdata_dbg     = dmem_rdata;
 
-    // Option 1: Pipeline Register
-    // pipeline_reg #(
-    //     .DATA_T (ldq_cdb_reg_t)
-    // ) cdb_reg (
-    //     .clk        (clk),
-    //     .rst        (rst),
-    //     .flush      (backend_flush),
-    //     .prv_valid  (dmem.resp),
-    //     .prv_ready  (),
-    //     .nxt_valid  (cdb_out_valid),
-    //     .nxt_ready  (1'b1),
-    //     .prv_data   (cdb_reg_in),
-    //     .nxt_data   (cdb_reg_out)
-    // );
-
-    // pipeline_reg #(
-    //     .DATA_T (ldq_rvfi_reg_t)
-    // ) rvfi_reg (
-    //     .clk        (clk),
-    //     .rst        (rst),
-    //     .flush      (backend_flush),
-    //     .prv_valid  (dmem.resp),
-    //     .prv_ready  (),
-    //     .nxt_valid  (rvfi_out_valid),
-    //     .nxt_ready  (1'b1),
-    //     .prv_data   (rvfi_reg_in),
-    //     .nxt_data   (rvfi_reg_out)
-    // );
-
-    // Option 2: Pass-through — broadcast the load result the cycle the dcache
-    // responds instead of a cycle later, cutting load-to-use latency by one.
-    // The arbiter serializes loads (one outstanding) and gates dmem.resp for
-    // flushed loads, so a registered stage is not needed for correctness.
+    // Pass-through: broadcast the load result the cycle the dcache responds
+    // instead of a cycle later, cutting load-to-use latency by one. The arbiter
+    // serializes loads (one outstanding) and gates dmem.resp for flushed loads,
+    // so a registered stage is not needed for correctness.
     assign cdb_reg_out = cdb_reg_in;
     assign rvfi_reg_out = rvfi_reg_in;
     assign cdb_out_valid = dmem.resp;

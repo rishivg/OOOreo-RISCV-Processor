@@ -7,8 +7,7 @@ import cpu_params::*;
     cb_bp_itf.bp                    from_cb,
     input   logic [31:0]            blk_pc,
 
-    // Speculative history update, driven from the fetch stage (same protocol
-    // the gshare predictor used).
+    // Speculative history update, driven from the fetch stage.
     input   logic                   flush,          // backend misprediction recovery
     input   logic                   spec_update_en, // a fetch block is consumed this cycle
     input   logic [IF_WIDTH-1:0]    spec_br_valid,  // fetched slots that are branches (in order)
@@ -28,7 +27,7 @@ import cpu_params::*;
 
     //---------------------------------------------------------------------------
     // Global history (speculative for prediction, committed for recovery) —
-    // identical scheme to the previous gshare, just GHR_LEN bits wide.
+    // speculative history drives prediction; committed history is the recovery point.
     //---------------------------------------------------------------------------
     logic [GHR_LEN-1:0]     ghr_spec;
     logic [GHR_LEN-1:0]     ghr_commit;

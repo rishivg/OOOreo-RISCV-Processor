@@ -98,8 +98,6 @@ import lsu_types::*;
     /////////////////////////
 
     logic   [STB_DEPTH-1:0] same_addr[LDQ_DEPTH]; // the address is the same
-    // logic   [STB_DEPTH-1:0] potential_conflict[LDQ_DEPTH]; // the store is between the head and the tracked tail
-    // logic   [STB_DEPTH-1:0] may_forward[LDQ_DEPTH]; // the store can be forwarded
 
     always_comb begin
         for (int i = 0; i < LDQ_DEPTH; i++) begin

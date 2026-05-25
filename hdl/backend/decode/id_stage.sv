@@ -226,4 +226,15 @@ import uop_types::*;
         assign to_rob.rvfi_dbg[i].mem_wdata = 'x;
     end endgenerate
 
+    // Invariant: a branch is the youngest instruction dispatched in its bundle
+    // (no valid uop dispatches after a valid branch in the same cycle). The ROB
+    // commits a whole row per cycle and recovers mispredicts at the branch's
+    // slot, so a younger same-row sibling would be wrongly committed/squashed.
+    generate for (genvar gi = 0; gi < ID_WIDTH; gi++) begin : asrt_br_youngest
+        for (genvar gj = gi + 1; gj < ID_WIDTH; gj++) begin : pair
+            branch_youngest: assert property (@(posedge clk) disable iff (rst)
+                !(uops_valid[gi] && (rs_type[gi] == RS_BR) && uops_valid[gj]));
+        end
+    end endgenerate
+
 endmodule

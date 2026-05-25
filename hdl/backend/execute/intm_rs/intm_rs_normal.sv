@@ -189,8 +189,6 @@ import int_rs_types::*;
     assign to_prf.rs1_phy = issued_entry.rs1_phy;
     assign to_prf.rs2_phy = issued_entry.rs2_phy;
 
-    // assign intm_rs_in_valid = |rs_request;
-
     // update intm_rs_in
     always_comb begin
         intm_rs_in.rob_id      = issued_entry.rob_id;
@@ -204,18 +202,6 @@ import int_rs_types::*;
     //---------------------------------------------------------------------------------
     // Instantiation:
     //---------------------------------------------------------------------------------
-    // fu_md fu_md_i(
-    //     .clk(clk),
-    //     .rst(rst),
-    //     .flush('0),
-    //     .prv_valid(intm_rs_in_valid),
-    //     .prv_ready(fu_md_ready),
-    //     .nxt_valid(fu_md_valid),
-    //     .nxt_ready('1),
-    //     .intm_rs_in(intm_rs_in),
-    //     .cdb(fu_cdb_out)
-    // );
-
     fu_mul fu_mul_i (
         .clk        (clk),
         .rst        (rst),

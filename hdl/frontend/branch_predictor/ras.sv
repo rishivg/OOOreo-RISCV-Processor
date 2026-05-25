@@ -21,7 +21,7 @@ import cpu_params::*;
 );
     localparam  unsigned    IF_BLK_SIZE = IF_WIDTH * 4;
 
-    // Two stacks mirroring the gshare spec/commit split: tos_spec drives
+    // Two stacks with a speculative/committed split: tos_spec drives
     // prediction and is corrupted freely by wrong-path fetch; ras_commit_mem /
     // tos_commit are touched only by committed calls/returns and never see the
     // wrong path, so resyncing spec<-commit on every flush undoes corruption.

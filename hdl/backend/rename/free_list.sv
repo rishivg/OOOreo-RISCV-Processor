@@ -100,4 +100,10 @@ import cpu_params::*;
 
     assign from_id.ready = (counter >= (FREELIST_IDX+1)'(ID_WIDTH));
 
+    // Invariant: the free list never holds more entries than physically exist.
+    // Exceeding FREELIST_DEPTH would mean a physical register was double-freed
+    // or duplicated (free-list / rename corruption).
+    fl_no_overflow: assert property (@(posedge clk) disable iff (rst)
+        counter <= (FREELIST_IDX+1)'(FREELIST_DEPTH));
+
 endmodule

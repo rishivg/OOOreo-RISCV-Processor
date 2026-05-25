@@ -24,31 +24,9 @@ module dmem_arbiter
     assign load.ready = (arbiter_priority == LOAD) ? ~dmem_busy && ~dmem_flushed : ~dmem_busy && ~dmem_flushed && ~store.valid;
     assign store.ready = (arbiter_priority == STORE) ?  ~dmem_busy && ~dmem_flushed : ~dmem_busy && ~dmem_flushed && ~load.valid;
 
-    // Round robin arbiter
-    // always_ff @(posedge clk) begin
-    //     if (rst) begin
-    //         arbiter_priority <= LOAD;
-    //     end else if (load.valid && load.ready) begin
-    //         arbiter_priority <= STORE;
-    //     end else if (store.valid && store.ready) begin
-    //         arbiter_priority <= LOAD;
-    //     end
-    // end
-
-    // Cyclic arbiter
-    // always_ff @(posedge clk) begin
-    //     if (rst) begin
-    //         arbiter_priority <= LOAD;
-    //     end else if (arbiter_priority == LOAD) begin
-    //         arbiter_priority <= STORE;
-    //     end else if (arbiter_priority == STORE) begin
-    //         arbiter_priority <= LOAD;
-    //     end
-    // end
-
-    // Fix priority arbiter
+    // Fixed LOAD priority: loads are latency-critical and feed dependents;
+    // measured better than round-robin/cyclic for CoreMark.
     assign arbiter_priority = LOAD;
-    // assign arbiter_priority = STORE;
 
     always_ff @(posedge clk) begin
         if (rst) begin

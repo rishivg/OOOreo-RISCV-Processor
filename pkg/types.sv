@@ -24,17 +24,12 @@ package cpu_params;
 
     localparam  unsigned    MEMRS_DEPTH     = 8;
     localparam  unsigned    MEMRS_IDX       = $clog2(MEMRS_DEPTH);
-    localparam  unsigned    LSQ_DEPTH       = 8;
     localparam  unsigned    LDQ_DEPTH       = 8;
     localparam  unsigned    LDQ_IDX         = $clog2(LDQ_DEPTH);
     localparam  unsigned    STQ_DEPTH       = 8;
     localparam  unsigned    STQ_IDX         = $clog2(STQ_DEPTH);
     localparam  unsigned    STB_DEPTH       = 4;
     localparam  unsigned    STB_IDX         = $clog2(STB_DEPTH);
-
-    // Reservation Station Type: 0(Normal), 1(Age-ordered)
-    localparam unsigned     INT_RS_TYPE     = 1;
-    localparam unsigned     INTM_RS_TYPE    = 0;
 
     // Issue mode
     localparam unsigned     INT_ISSUE_WIDTH = 2;
@@ -46,21 +41,7 @@ package cpu_params;
     localparam  unsigned    CDB_WIDTH       = 5; // Number of CDB, could be different from NUM_RS
     localparam  unsigned    NUM_FAST_BYPASS = 2;
 
-    // localparam logic        RS_CDB_BYPASS[NUM_RS][CDB_WIDTH] =
-    //     '{'{1, 1, 1, 1}, // INTRS
-    //       '{1, 1, 1, 1}, // INTMRS
-    //       '{1, 1, 1, 1}, // BRRS
-    //       '{1, 1, 1, 1}  // MEMRS
-    //       };
-
-    // localparam logic        PRF_FORWARDING[CDB_WIDTH][CDB_WIDTH] =
-    //     '{'{1, 1, 1, 1}, // FU_ALU
-    //       '{1, 1, 1, 1}, // FU_MDU
-    //       '{1, 1, 1, 1}, // FU_BR
-    //       '{1, 1, 1, 1}  // FU_AGU
-    //       };
-
-    // GShare Parameters
+    // Bimodal base predictor table (also the TAGE base)
     localparam  unsigned    PHT_DEPTH       = 4096;
     localparam  unsigned    PHT_IDX         = $clog2(PHT_DEPTH);
 

@@ -139,7 +139,6 @@ import lsu_types::*;
 
     logic   [STQ_DEPTH-1:0] same_addr[LDQ_DEPTH]; // either the address is invalid or the address is the same
     logic   [STQ_DEPTH-1:0] potential_conflict[LDQ_DEPTH]; // the store is between the head and the tracked tail
-    // logic   [STQ_DEPTH-1:0] may_forward[LDQ_DEPTH]; // the store can be forwarded
 
     always_comb begin
         for (int i = 0; i < LDQ_DEPTH; i++) begin
@@ -168,18 +167,6 @@ import lsu_types::*;
             end
         end
     end
-
-    // always_comb begin
-    //     for (int i = 0; i < LDQ_DEPTH; i++) begin
-    //         may_forward[i] = '0;
-    //         for (int unsigned j = 0; j < STQ_DEPTH; j++) begin
-    //             // Determine if the store can be forwarded
-    //             if (fifo[j].addr_valid && (fifo[j].addr[1:0] == from_ldq.ldq_addr[i][1:0]) && fifo[j].fu_opcode[2:0] == from_ldq.fu_opcode[i][2:0]) begin
-    //                 may_forward[i] = 1'b1;
-    //             end
-    //         end
-    //     end
-    // end
 
     always_comb begin
         for (int i = 0; i < LDQ_DEPTH; i++) begin
@@ -246,5 +233,11 @@ import lsu_types::*;
             end
         end
     end
+
+    // Invariant: a store only dequeues when the queue is non-empty. The load
+    // queue relies on this (its track_stq_ptr = stq_tail - 1 on stq_deq would
+    // underflow if a store dequeued from an empty queue).
+    stq_deq_nonempty: assert property (@(posedge clk) disable iff (rst)
+        dequeue |-> (counter != '0));
 
 endmodule

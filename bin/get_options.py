@@ -49,7 +49,10 @@ if sys.argv[1] == "dw_ip":
         if result.returncode == 1:
             with open("sim/xprop.config", "a") as f:
                 f.write("module {" + i + "} {xpropOff};\n")
-    print(' '.join([os.environ["DW"] + '/sim_ver/' + x + '.v' for x in j['dw_ip']]))
+    # DW is only set for the DesignWare/VCS flow; the Verilator flow uses the
+    # mock in hvl/common/dw_mock.sv, so emit nothing rather than raising KeyError.
+    dw = os.environ.get("DW")
+    print(' '.join([dw + '/sim_ver/' + x + '.v' for x in j['dw_ip']]) if dw else '')
 
 if sys.argv[1] == "min_power":
     print(int(j["synth"]["min_power"]))

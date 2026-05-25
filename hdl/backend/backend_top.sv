@@ -141,51 +141,28 @@ import int_rs_types::*;
         end
     endgenerate
 
-    generate
-        if( INT_RS_TYPE == 1 ) begin
-            int_rs_ordered int_rs_i(
-                .clk                    (clk),
-                .rst                    (rst || backend_flush),
-                .from_ds                (ds_int_rs_itf_i),
-                .to_prf                 (int_to_prf),
-                .cdb                    (cdb_itfs),
-                .fu_cdb_out             (int_fu_cdb_out),
-                .alu_bypass             (alu_bypass)
-            );
-        end else begin
-            int_rs_normal int_rs_i(
-                .clk                    (clk),
-                .rst                    (rst || backend_flush),
-                .from_ds                (ds_int_rs_itf_i),
-                .to_prf                 (rs_prf_itfs[0]),
-                .cdb                    (cdb_itfs),
-                .fu_cdb_out             (cdb_itfs[0])
-            );
-        end
-    endgenerate
+    int_rs_ordered int_rs_i(
+        .clk                    (clk),
+        .rst                    (rst || backend_flush),
+        .from_ds                (ds_int_rs_itf_i),
+        .to_prf                 (int_to_prf),
+        .cdb                    (cdb_itfs),
+        .fu_cdb_out             (int_fu_cdb_out),
+        .alu_bypass             (alu_bypass)
+    );
 
-    generate
-        if ( INTM_RS_TYPE == 1 ) begin : intm_rs_gen
-            intm_rs_ordered intm_rs_i(
-                .clk                    (clk),
-                .rst                    (rst || backend_flush),
-                .from_ds                (ds_intm_rs_itf_i),
-                .to_prf                 (rs_prf_itfs[1]),
-                .cdb                    (cdb_itfs),
-                .fu_cdb_out             (cdb_itfs[1])
-            );
-        end else begin : intm_rs_gen
-            intm_rs_normal intm_rs_i(
-                .clk                    (clk),
-                .rst                    (rst || backend_flush),
-                .from_ds                (ds_intm_rs_itf_i),
-                .to_prf                 (rs_prf_itfs[1]),
-                .cdb                    (cdb_itfs),
-                .fu_cdb_out             (cdb_itfs[1]),
-                .alu_bypass             (alu_bypass)
-            );
-        end
-    endgenerate
+    // intm_rs_gen scope retained for the perf_monitor hierarchical taps.
+    generate if ( 1 ) begin : intm_rs_gen
+        intm_rs_normal intm_rs_i(
+            .clk                    (clk),
+            .rst                    (rst || backend_flush),
+            .from_ds                (ds_intm_rs_itf_i),
+            .to_prf                 (rs_prf_itfs[1]),
+            .cdb                    (cdb_itfs),
+            .fu_cdb_out             (cdb_itfs[1]),
+            .alu_bypass             (alu_bypass)
+        );
+    end endgenerate
 
     branch_top branch_i(
         .clk                    (clk),
