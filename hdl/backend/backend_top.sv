@@ -165,7 +165,7 @@ import int_rs_types::*;
     endgenerate
 
     generate
-        if ( INTM_RS_TYPE == 1 ) begin
+        if ( INTM_RS_TYPE == 1 ) begin : intm_rs_gen
             intm_rs_ordered intm_rs_i(
                 .clk                    (clk),
                 .rst                    (rst || backend_flush),
@@ -174,7 +174,7 @@ import int_rs_types::*;
                 .cdb                    (cdb_itfs),
                 .fu_cdb_out             (cdb_itfs[1])
             );
-        end else begin
+        end else begin : intm_rs_gen
             intm_rs_normal intm_rs_i(
                 .clk                    (clk),
                 .rst                    (rst || backend_flush),
