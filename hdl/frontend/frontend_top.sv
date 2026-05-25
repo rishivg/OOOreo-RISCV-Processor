@@ -88,11 +88,31 @@ import cpu_params::*;
 
     logic   [PHT_IDX-1:0]   ghr_snapshot;
 
+    // Branch predecode for speculative history update: which fetched slots are
+    // control transfers (conditional branch / jal / jalr), matching the set of
+    // events the control buffer feeds back at commit.
+    logic                   fetch_fire;
+    logic   [IF_WIDTH-1:0]  spec_br_valid;
+
+    assign fetch_fire = to_fifo.valid && to_fifo.ready;
+    always_comb begin
+        for (int i = 0; i < IF_WIDTH; i++) begin
+            spec_br_valid[i] = to_fifo.packet.valid[i] &&
+                ( (insts[i][6:0] == 7'b1100011)     // conditional branch
+                || (insts[i][6:0] == 7'b1101111)    // jal
+                || (insts[i][6:0] == 7'b1100111) ); // jalr
+        end
+    end
+
     gshare gshare_i(
         .clk                    (clk),
         .rst                    (rst),
         .from_cb                (from_cb),
         .blk_pc                 (blk_pc),
+        .flush                  (backend_flush),
+        .spec_update_en         (fetch_fire),
+        .spec_br_valid          (spec_br_valid),
+        .spec_br_taken          (predict_taken),
         .ghr_snapshot           (ghr_snapshot),
         .predict_taken          (predict_taken_gshare)
     );
