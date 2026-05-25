@@ -12,7 +12,7 @@ package cpu_params;
     localparam  unsigned    PRF_DEPTH   = 64;
     localparam  unsigned    PRF_IDX     = $clog2(PRF_DEPTH);
 
-    localparam unsigned     INTRS_DEPTH     = 8;
+    localparam unsigned     INTRS_DEPTH     = 16;
     localparam unsigned     INTRS_IDX       = $clog2(INTRS_DEPTH);
 
     localparam unsigned     INTMRS_DEPTH    = 4;
@@ -65,7 +65,7 @@ package cpu_params;
     localparam  unsigned    PHT_IDX         = $clog2(PHT_DEPTH);
 
     // uBTB Parameters
-    localparam  unsigned    UBTB_DEPTH      = 8;
+    localparam  unsigned    UBTB_DEPTH      = 64;
     localparam  unsigned    UBTB_IDX        = $clog2(UBTB_DEPTH);
     localparam  unsigned    UBTB_TAG_IDX    = 20; // need at most 30 bits for matching
 
