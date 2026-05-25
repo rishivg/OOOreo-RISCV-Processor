@@ -60,9 +60,22 @@ import lsu_types::*;
             end
         end
 
+        // Free speculative loads once their ordering is resolved: a known
+        // overlapping older store (violation) or all older stores resolved with
+        // no overlap (proven safe). Both stop tracking; the violation pulse to
+        // the ROB above handles re-execution.
+        for (int i = 0; i < LDQ_DEPTH; i++) begin
+            if (ldq_arr[i].valid && ldq_arr[i].issued && ldq_arr[i].spec
+                && (from_stq.known_conflict[i] || !from_stq.unknown_older[i])) begin
+                ldq_arr_nxt[i].valid = 1'b0;
+            end
+        end
+
         if (push_en) begin
             ldq_arr_nxt[push_idx].valid         = 1'b1;
             ldq_arr_nxt[push_idx].addr_valid    = 1'b0;
+            ldq_arr_nxt[push_idx].issued        = 1'b0;
+            ldq_arr_nxt[push_idx].spec          = 1'b0;
             ldq_arr_nxt[push_idx].track_stq_ptr = (from_stq.stq_deq) ? (from_stq.stq_tail - 1) : from_stq.stq_tail;
             ldq_arr_nxt[push_idx].rob_id        = from_ds.uop.rob_id;
             ldq_arr_nxt[push_idx].fu_opcode     = from_ds.uop.fu_opcode;
@@ -71,7 +84,13 @@ import lsu_types::*;
         end
 
         if (issue_en && dmem.ready) begin
-            ldq_arr_nxt[issue_idx].valid = 1'b0;
+            if (from_stq.unknown_older[issue_idx]) begin
+                // speculative: park for violation checking instead of freeing
+                ldq_arr_nxt[issue_idx].issued = 1'b1;
+                ldq_arr_nxt[issue_idx].spec   = 1'b1;
+            end else begin
+                ldq_arr_nxt[issue_idx].valid  = 1'b0;
+            end
         end
     end
 
@@ -128,15 +147,43 @@ import lsu_types::*;
         //         end
         //     end
         // end
-        // Then consider the case where there is no conflicting store
+        // Issue when there is no conflicting store, OR when the load can be
+        // fully satisfied by forwarding from a single covering store (which
+        // shadows any older store, so the store-buffer check is unnecessary).
+        // Issue when no *known* older store conflicts (and no store-buffer
+        // conflict), or when a single covering store can forward. Loads issue
+        // speculatively past older stores whose addresses are still unknown;
+        // if such a store later resolves to an overlapping address it is caught
+        // as a memory-ordering violation (see below). Already-issued speculative
+        // loads (.issued) stay parked for violation checking and don't re-issue.
         for (int unsigned i = 0; i < LDQ_DEPTH; i++) begin
-            if (ldq_arr[i].valid && ldq_arr[i].addr_valid) begin
-                // if (ldq_arr[i].track_stq_ptr == '0) begin
-                if ((ldq_arr[i].track_stq_ptr == '0 || !from_stq.has_conflicting_store[i]) && (!from_stb.has_conflicting_store[i])) begin
+            if (ldq_arr[i].valid && ldq_arr[i].addr_valid && ~ldq_arr[i].issued) begin
+                if ((!from_stq.known_conflict[i] && !from_stb.has_conflicting_store[i])
+                    || from_stq.forward_en[i]) begin
                     issue_en = 1'b1;
                     issue_idx = (LDQ_IDX)'(i);
                     break;
                 end
+            end
+        end
+    end
+
+    ////////////////////////////////////
+    // Memory-ordering violation logic //
+    ////////////////////////////////////
+    // A speculatively-issued load that is still parked (.issued && .spec) and
+    // now sees a resolved older store overlapping its bytes read stale data:
+    // flag its ROB entry so it re-executes at commit. Once all older stores
+    // resolve with no overlap the speculation is proven safe.
+
+    always_comb begin
+        to_rob.violation        = 1'b0;
+        to_rob.violation_rob_id = 'x;
+        for (int i = 0; i < LDQ_DEPTH; i++) begin
+            if (ldq_arr[i].valid && ldq_arr[i].issued && ldq_arr[i].spec
+                && from_stq.known_conflict[i]) begin
+                to_rob.violation        = 1'b1;
+                to_rob.violation_rob_id = ldq_arr[i].rob_id;
             end
         end
     end
@@ -160,6 +207,8 @@ import lsu_types::*;
             load_stage_reg.mask_dbg      <= ldq_arr[issue_idx].mask;
             load_stage_reg.rs1_value_dbg <= ldq_arr[issue_idx].rs1_value_dbg;
             load_stage_reg.rs2_value_dbg <= ldq_arr[issue_idx].rs2_value_dbg;
+            load_stage_reg.forward_en    <= from_stq.forward_en[issue_idx];
+            load_stage_reg.forward_wdata <= from_stq.forward_wdata[issue_idx];
         end
     end
 
@@ -172,7 +221,7 @@ import lsu_types::*;
     logic   [31:0]  dmem_rdata;
     logic   [31:0]  dmem_rdata_wb;
 
-    assign dmem_rdata = dmem.rdata;
+    assign dmem_rdata = load_stage_reg.forward_en ? load_stage_reg.forward_wdata : dmem.rdata;
 
     always_comb begin
         unique case (load_stage_reg.fu_opcode)

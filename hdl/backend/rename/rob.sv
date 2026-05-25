@@ -29,6 +29,7 @@ import rvfi_types::*;
         logic   [PRF_IDX-1:0]   rd_phy;
         logic   [ARF_IDX-1:0]   rd_arch;
         logic                   is_store;
+        logic                   mem_violation; // speculatively-issued load aliased an older store; re-execute at commit
     } rob_entry_t;
 
     rob_entry_t             rob_arr [ROB_DEPTH] [ID_WIDTH];
@@ -104,6 +105,7 @@ import rvfi_types::*;
                     rob_arr[tail_ptr][i].rd_phy <= from_id.rd_phy[i];
                     rob_arr[tail_ptr][i].rd_arch <= from_id.rd_arch[i];
                     rob_arr[tail_ptr][i].is_store <= from_id.is_store[i];
+                    rob_arr[tail_ptr][i].mem_violation <= 1'b0;
                     rvfi_array[tail_ptr][i] <= from_id.rvfi_dbg[i];       // for rvfi storage
                 end
             end
@@ -121,6 +123,10 @@ import rvfi_types::*;
                 end
             end
 
+            if (from_ldq.violation) begin
+                rob_arr[from_ldq.violation_rob_id / ID_WIDTH][from_ldq.violation_rob_id % ID_WIDTH].mem_violation <= 1'b1;
+            end
+
             if (from_ldq.valid) begin
                 rvfi_array[from_ldq.rob_id / ID_WIDTH][from_ldq.rob_id % ID_WIDTH].mem_addr <= from_ldq.addr_dbg;
                 rvfi_array[from_ldq.rob_id / ID_WIDTH][from_ldq.rob_id % ID_WIDTH].mem_rmask <= from_ldq.rmask_dbg;
@@ -131,9 +137,28 @@ import rvfi_types::*;
         end
     end
 
+    // Memory-ordering violation flush: when the committing head row contains a
+    // load flagged as having aliased an older store, squash that load and every
+    // younger slot and re-fetch from the load's PC. The violated load is always
+    // older than any same-row branch (branches terminate a fetch row), so this
+    // takes priority over a branch-mispredict redirect.
+    logic                       viol_flush;
+    logic   [ID_WIDTH_IDX-1:0]  viol_slot;
+    always_comb begin
+        viol_flush = 1'b0;
+        viol_slot  = '0;
+        for (int i = ID_WIDTH-1; i >= 0; i--) begin     // lowest (oldest) slot wins
+            if (pop && rob_arr[head_ptr][i].valid && rob_arr[head_ptr][i].mem_violation) begin
+                viol_flush = 1'b1;
+                viol_slot  = (ID_WIDTH_IDX)'(i);
+            end
+        end
+    end
+
     always_comb begin
         for (int i = 0; i < ID_WIDTH; i++) begin
-            commit_instr[i] = pop && rob_arr[head_ptr][i].valid;
+            commit_instr[i] = pop && rob_arr[head_ptr][i].valid
+                              && !(viol_flush && (ID_WIDTH_IDX)'(i) >= viol_slot);
         end
     end
 
@@ -151,10 +176,13 @@ import rvfi_types::*;
     end endgenerate
 
     // interface with control_buffer
+    logic       branch_flush;
     assign dequeue = from_cb.ready ? pop && ((ROB_PTR_IDX)'(from_cb.rob_id / ID_WIDTH) == head_ptr) : 1'b0;
     assign from_cb.dequeue = dequeue;
-    assign backend_flush = dequeue && from_cb.miss_predict;
-    assign backend_redirect_pc = from_cb.target_address;
+    assign branch_flush = dequeue && from_cb.miss_predict;
+    assign backend_flush = branch_flush || viol_flush;
+    assign backend_redirect_pc = viol_flush ? rvfi_array[head_ptr][viol_slot].pc_rdata
+                                             : from_cb.target_address;
 
     // interface with store queue
     logic       stq_ready;
@@ -186,7 +214,7 @@ import rvfi_types::*;
         assign rvfi_itf[i].frd_addr = rvfi_head[i].frd_addr;
         assign rvfi_itf[i].frd_wdata = rvfi_head[i].frd_wdata;
         assign rvfi_itf[i].pc_rdata = rvfi_head[i].pc_rdata;
-        assign rvfi_itf[i].pc_wdata = (backend_flush && 32'(from_cb.rob_id % ID_WIDTH) == i) ? backend_redirect_pc : rvfi_head[i].pc_wdata;
+        assign rvfi_itf[i].pc_wdata = (branch_flush && 32'(from_cb.rob_id % ID_WIDTH) == i) ? backend_redirect_pc : rvfi_head[i].pc_wdata;
         assign rvfi_itf[i].mem_addr = (from_stq.valid && from_stq.ready && 32'(from_stq.rob_id % ID_WIDTH) == i) ? from_stq.addr_dbg : rvfi_head[i].mem_addr;
         assign rvfi_itf[i].mem_rmask = (from_stq.valid && from_stq.ready && 32'(from_stq.rob_id % ID_WIDTH) == i) ? '0 : rvfi_head[i].mem_rmask;
         assign rvfi_itf[i].mem_wmask = (from_stq.valid && from_stq.ready && 32'(from_stq.rob_id % ID_WIDTH) == i) ? from_stq.wmask_dbg : rvfi_head[i].mem_wmask;

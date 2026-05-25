@@ -187,4 +187,64 @@ import lsu_types::*;
         end
     end
 
+    /////////////////////////////
+    // Store-to-Load Forwarding //
+    /////////////////////////////
+    // Forward only when fully disambiguated: no older store with an unknown
+    // address, exactly one older store overlaps the load, and it covers every
+    // lane the load reads. Then the load's result is that store's data word.
+    // Requiring all in-range store addresses to be known means no later-
+    // resolving store can invalidate the forward.
+
+    logic   [STQ_DEPTH-1:0] unknown_older[LDQ_DEPTH];   // in-range store, addr not yet known
+    logic   [STQ_DEPTH-1:0] overlap_older[LDQ_DEPTH];   // in-range known store writing a read lane
+    logic   [STQ_DEPTH-1:0] cover_older[LDQ_DEPTH];     // in-range known store covering all read bytes
+
+    always_comb begin
+        for (int i = 0; i < LDQ_DEPTH; i++) begin
+            for (int j = 0; j < STQ_DEPTH; j++) begin
+                unknown_older[i][j] = potential_conflict[i][j] && ~fifo[j].addr_valid;
+                overlap_older[i][j] = potential_conflict[i][j] && fifo[j].addr_valid &&
+                    (fifo[j].addr[31:2] == from_ldq.ldq_addr[i][31:2]) &&
+                    ((from_ldq.ldq_rmask[i] & (~fifo[j].mask)) != from_ldq.ldq_rmask[i]);
+                cover_older[i][j]   = potential_conflict[i][j] && fifo[j].addr_valid &&
+                    (fifo[j].addr[31:2] == from_ldq.ldq_addr[i][31:2]) &&
+                    ((from_ldq.ldq_rmask[i] & (~fifo[j].mask)) == '0);
+            end
+        end
+    end
+
+    // Aggregates for speculative-load disambiguation. Both gated on
+    // ldq_tracker != 0 because with no older stores potential_conflict wraps to
+    // all-ones (tracked_tail = rd_ptr-1) and the per-store arrays are garbage.
+    //   known_conflict : a resolved older store overlaps the load's read bytes
+    //                    -> a speculatively-issued load that sees this has a
+    //                    genuine memory-ordering violation.
+    //   unknown_older  : some older store's address is still unknown, so the
+    //                    load's disambiguation is not yet final.
+    always_comb begin
+        for (int i = 0; i < LDQ_DEPTH; i++) begin
+            from_ldq.known_conflict[i] = (from_ldq.ldq_tracker[i] != '0) && (|overlap_older[i]);
+            from_ldq.unknown_older[i]  = (from_ldq.ldq_tracker[i] != '0) && (|unknown_older[i]);
+        end
+    end
+
+    always_comb begin
+        for (int i = 0; i < LDQ_DEPTH; i++) begin
+            from_ldq.forward_en[i]    = 1'b0;
+            from_ldq.forward_wdata[i] = 'x;
+            // ldq_tracker == 0 means no older stores: potential_conflict wraps
+            // to all-ones (tracked_tail = rd_ptr-1), so it must be excluded
+            // here just as the load-issue path guards it with track_stq_ptr==0.
+            if ((from_ldq.ldq_tracker[i] != '0) && ~(|unknown_older[i]) && ($countones(overlap_older[i]) == 1)) begin
+                for (int j = 0; j < STQ_DEPTH; j++) begin
+                    if (overlap_older[i][j] && cover_older[i][j]) begin
+                        from_ldq.forward_en[i]    = 1'b1;
+                        from_ldq.forward_wdata[i] = fifo[j].wdata;
+                    end
+                end
+            end
+        end
+    end
+
 endmodule

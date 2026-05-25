@@ -69,6 +69,19 @@ package cpu_params;
     localparam  unsigned    UBTB_IDX        = $clog2(UBTB_DEPTH);
     localparam  unsigned    UBTB_TAG_IDX    = 20; // need at most 30 bits for matching
 
+    // Return Address Stack Parameters
+    localparam  unsigned    RAS_DEPTH       = 16;
+    localparam  unsigned    RAS_IDX         = $clog2(RAS_DEPTH);
+
+    // TAGE Parameters (global history shared with the bimodal base above)
+    localparam  unsigned    GHR_LEN         = 64;   // global history register width carried per branch
+    localparam  unsigned    TAGE_NUM        = 4;    // number of tagged components
+    localparam  unsigned    TAGE_DEPTH      = 1024; // entries per tagged component
+    localparam  unsigned    TAGE_IDX        = $clog2(TAGE_DEPTH);
+    localparam  unsigned    TAGE_TAG_BITS   = 9;
+    localparam  unsigned    TAGE_CTR_BITS   = 3;    // signed saturating counter
+    localparam  unsigned    TAGE_U_BITS     = 2;    // usefulness counter
+
     // Do not change this
     localparam  unsigned    ARF_DEPTH   = 32;
     localparam  unsigned    ARF_IDX     = $clog2(ARF_DEPTH);
@@ -214,7 +227,7 @@ import cpu_params::*;
         logic   [IF_WIDTH-1:0]  [31:0]  predict_target;
         logic                   [31:0]  pc;
         logic   [IF_WIDTH-1:0]          valid;
-        logic   [PHT_IDX-1:0]           ghr;        // gshare history snapshot when predicted
+        logic   [GHR_LEN-1:0]           ghr;        // global history snapshot when predicted
     } fetch_packet_t;
 
 endpackage
@@ -321,7 +334,7 @@ import cpu_params::*;
 
         logic                   predict_taken; // Branch prediction
         logic   [31:0]          predict_target; // Branch prediction target
-        logic   [PHT_IDX-1:0]   ghr;            // gshare history snapshot when predicted
+        logic   [GHR_LEN-1:0]   ghr;            // global history snapshot when predicted
     } uop_t;
 
 endpackage
@@ -576,6 +589,8 @@ import cpu_params::*;
     typedef struct packed {
         logic                   valid; // If the entry is valid
         logic                   addr_valid; // If the addr and mask is ready
+        logic                   issued; // dcache access already launched (speculative load awaiting store resolution)
+        logic                   spec;   // issued speculatively past an older store with unknown address
         logic   [STQ_IDX:0]     track_stq_ptr;
         logic   [ROB_IDX-1:0]   rob_id;
         logic   [3:0]           fu_opcode;
@@ -597,8 +612,8 @@ import cpu_params::*;
         logic   [3:0]           mask_dbg;
         logic   [31:0]          rs1_value_dbg;
         logic   [31:0]          rs2_value_dbg;
-        // logic                   forward_en;
-        // logic   [31:0]          forward_wdata;
+        logic                   forward_en;     // result came from store-to-load forward
+        logic   [31:0]          forward_wdata;  // forwarded store word (already aligned)
     } load_stage_reg_t;
 
     typedef struct packed {

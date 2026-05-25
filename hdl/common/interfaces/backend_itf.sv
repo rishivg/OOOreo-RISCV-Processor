@@ -345,9 +345,11 @@ import cpu_params::*;
     logic   [STQ_IDX:0]     ldq_tracker[LDQ_DEPTH];
     logic   [31:0]          ldq_addr[LDQ_DEPTH];
     logic   [3:0]           ldq_rmask[LDQ_DEPTH];
-    logic                   has_conflicting_store[LDQ_DEPTH];
-    // logic                   forward_en[LDQ_DEPTH];
-    // logic   [31:0]          forward_wdata[LDQ_DEPTH];
+    logic                   has_conflicting_store[LDQ_DEPTH]; // overlapping older store, known OR unknown address
+    logic                   known_conflict[LDQ_DEPTH];        // overlapping older store with a KNOWN address
+    logic                   unknown_older[LDQ_DEPTH];         // some older store still has an unknown address
+    logic                   forward_en[LDQ_DEPTH];          // load can be satisfied by a single fully-covering store
+    logic   [31:0]          forward_wdata[LDQ_DEPTH];       // that store's data word
 
     modport ldq (
         input               stq_tail,
@@ -355,7 +357,11 @@ import cpu_params::*;
         output              ldq_tracker,
         output              ldq_addr,
         output              ldq_rmask,
-        input               has_conflicting_store
+        input               has_conflicting_store,
+        input               known_conflict,
+        input               unknown_older,
+        input               forward_en,
+        input               forward_wdata
     );
 
     modport stq (
@@ -364,7 +370,11 @@ import cpu_params::*;
         input               ldq_tracker,
         input               ldq_addr,
         input               ldq_rmask,
-        output              has_conflicting_store
+        output              has_conflicting_store,
+        output              known_conflict,
+        output              unknown_older,
+        output              forward_en,
+        output              forward_wdata
     );
 
 endinterface
@@ -398,13 +408,17 @@ import cpu_params::*;
     logic   [3:0]               rmask_dbg;
     logic   [31:0]              rdata_dbg;
     logic                       valid;
+    logic                       violation;      // speculatively-issued load aliased an older store
+    logic   [ROB_IDX-1:0]       violation_rob_id;
 
     modport ldq (
         output              rob_id,
         output              addr_dbg,
         output              rmask_dbg,
         output              rdata_dbg,
-        output              valid
+        output              valid,
+        output              violation,
+        output              violation_rob_id
     );
 
     modport rob (
@@ -412,7 +426,9 @@ import cpu_params::*;
         input               addr_dbg,
         input               rmask_dbg,
         input               rdata_dbg,
-        input               valid
+        input               valid,
+        input               violation,
+        input               violation_rob_id
     );
 
 endinterface
@@ -535,7 +551,9 @@ import cpu_params::*;
     logic   [3:0]           fu_opcode;
     logic                   branch_taken;
     logic   [31:0]          target_address;
-    logic   [PHT_IDX-1:0]   ghr;        // history snapshot used when this branch was predicted
+    logic   [GHR_LEN-1:0]   ghr;        // history snapshot used when this branch was predicted
+    logic                   is_call;    // committed branch pushes a return address (RAS)
+    logic                   is_ret;     // committed branch pops a return address (RAS)
 
     modport cb (
         output              update_en,
@@ -543,7 +561,9 @@ import cpu_params::*;
         output              fu_opcode,
         output              branch_taken,
         output              target_address,
-        output              ghr
+        output              ghr,
+        output              is_call,
+        output              is_ret
     );
 
     modport bp (
@@ -552,7 +572,9 @@ import cpu_params::*;
         input               fu_opcode,
         input               branch_taken,
         input               target_address,
-        input               ghr
+        input               ghr,
+        input               is_call,
+        input               is_ret
     );
 
 endinterface
