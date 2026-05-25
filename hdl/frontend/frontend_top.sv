@@ -33,6 +33,8 @@ import cpu_params::*;
     logic   [IF_WIDTH-1:0]          predict_taken;
     logic   [IF_WIDTH-1:0]          predict_taken_gshare;
     logic   [IF_WIDTH-1:0]  [31:0]  predict_target;
+    logic   [IF_WIDTH-1:0]          predict_taken_ubtb;
+    logic   [IF_WIDTH-1:0]  [31:0]  predict_target_ubtb;
 
     logic   predict_taken_en;
     logic   [IF_WIDTH_IDX-1:0]  predict_taken_idx;
@@ -86,7 +88,7 @@ import cpu_params::*;
         .icache_itf             (icache_itf)
     );
 
-    logic   [PHT_IDX-1:0]   ghr_snapshot;
+    logic   [GHR_LEN-1:0]   ghr_snapshot;
 
     // Branch predecode for speculative history update: which fetched slots are
     // control transfers (conditional branch / jal / jalr), matching the set of
@@ -104,7 +106,7 @@ import cpu_params::*;
         end
     end
 
-    gshare gshare_i(
+    tage tage_i(
         .clk                    (clk),
         .rst                    (rst),
         .from_cb                (from_cb),
@@ -123,8 +125,24 @@ import cpu_params::*;
         .from_cb                (from_cb),
         .predict_taken_gshare   (predict_taken_gshare),
         .blk_pc                 (blk_pc),
-        .predict_target         (predict_target),
-	    .predict_taken		    (predict_taken)
+        .predict_target         (predict_target_ubtb),
+	    .predict_taken		    (predict_taken_ubtb)
+    );
+
+    // Return Address Stack: overrides return targets on top of the uBTB.
+    ras ras_i(
+        .clk                    (clk),
+        .rst                    (rst),
+        .flush                  (backend_flush),
+        .fetch_fire             (fetch_fire),
+        .blk_pc                 (blk_pc),
+        .pc                     (pc),
+        .insts                  (insts),
+        .predict_taken_in       (predict_taken_ubtb),
+        .predict_target_in      (predict_target_ubtb),
+        .predict_taken_out      (predict_taken),
+        .predict_target_out     (predict_target),
+        .from_cb                (from_cb)
     );
 
     assign if1_ready = to_fifo.ready;

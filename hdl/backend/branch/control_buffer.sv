@@ -21,8 +21,24 @@ import uop_types::*;
         logic                   branch_taken;
         logic   [31:0]          pc;
         logic   [3:0]           fu_opcode;
-        logic   [PHT_IDX-1:0]   ghr;        // gshare snapshot captured when predicted
+        logic   [GHR_LEN-1:0]   ghr;        // global history snapshot captured when predicted
+        logic                   is_call;    // RAS: jal/jalr writing a link register (x1/x5)
+        logic                   is_ret;     // RAS: jalr reading a link register, not writing one
     } cb_entry_t;
+
+    // RAS classification of the enqueuing branch (RISC-V calling convention:
+    // x1/x5 are link registers).
+    logic           enq_is_call, enq_is_ret;
+    logic   [6:0]   enq_opcode;
+    logic   [4:0]   enq_rd, enq_rs1;
+    logic           enq_link_rd, enq_link_rs1;
+    assign enq_opcode   = from_ds.uop.inst[6:0];
+    assign enq_rd       = from_ds.uop.inst[11:7];
+    assign enq_rs1      = from_ds.uop.inst[19:15];
+    assign enq_link_rd  = (enq_rd  == 5'd1) || (enq_rd  == 5'd5);
+    assign enq_link_rs1 = (enq_rs1 == 5'd1) || (enq_rs1 == 5'd5);
+    assign enq_is_call  = ((enq_opcode == 7'b1101111) || (enq_opcode == 7'b1100111)) && enq_link_rd;
+    assign enq_is_ret   = (enq_opcode == 7'b1100111) && enq_link_rs1 && ~enq_link_rd;
 
     cb_entry_t              fifo[CB_DEPTH];
 
@@ -52,6 +68,8 @@ import uop_types::*;
                 fifo[wr_ptr_actual].pc <= from_ds.uop.pc;
                 fifo[wr_ptr_actual].fu_opcode <= from_ds.uop.fu_opcode;
                 fifo[wr_ptr_actual].ghr <= from_ds.uop.ghr;
+                fifo[wr_ptr_actual].is_call <= enq_is_call;
+                fifo[wr_ptr_actual].is_ret <= enq_is_ret;
                 wr_ptr <= (CB_IDX+1)'(wr_ptr + 1);
             end
 
@@ -92,5 +110,7 @@ import uop_types::*;
     assign to_bp.branch_taken   = fifo[rd_ptr_actual].branch_taken;
     assign to_bp.target_address = fifo[rd_ptr_actual].target_address;
     assign to_bp.ghr            = fifo[rd_ptr_actual].ghr;
+    assign to_bp.is_call        = fifo[rd_ptr_actual].is_call;
+    assign to_bp.is_ret         = fifo[rd_ptr_actual].is_ret;
 
 endmodule
