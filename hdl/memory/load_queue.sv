@@ -271,38 +271,42 @@ import lsu_types::*;
     assign rvfi_reg_in.rdata_dbg     = dmem_rdata;
 
     // Option 1: Pipeline Register
-    pipeline_reg #(
-        .DATA_T (ldq_cdb_reg_t)
-    ) cdb_reg (
-        .clk        (clk),
-        .rst        (rst),
-        .flush      (backend_flush),
-        .prv_valid  (dmem.resp),
-        .prv_ready  (),
-        .nxt_valid  (cdb_out_valid),
-        .nxt_ready  (1'b1),
-        .prv_data   (cdb_reg_in),
-        .nxt_data   (cdb_reg_out)
-    );
+    // pipeline_reg #(
+    //     .DATA_T (ldq_cdb_reg_t)
+    // ) cdb_reg (
+    //     .clk        (clk),
+    //     .rst        (rst),
+    //     .flush      (backend_flush),
+    //     .prv_valid  (dmem.resp),
+    //     .prv_ready  (),
+    //     .nxt_valid  (cdb_out_valid),
+    //     .nxt_ready  (1'b1),
+    //     .prv_data   (cdb_reg_in),
+    //     .nxt_data   (cdb_reg_out)
+    // );
 
-    pipeline_reg #(
-        .DATA_T (ldq_rvfi_reg_t)
-    ) rvfi_reg (
-        .clk        (clk),
-        .rst        (rst),
-        .flush      (backend_flush),
-        .prv_valid  (dmem.resp),
-        .prv_ready  (),
-        .nxt_valid  (rvfi_out_valid),
-        .nxt_ready  (1'b1),
-        .prv_data   (rvfi_reg_in),
-        .nxt_data   (rvfi_reg_out)
-    );
+    // pipeline_reg #(
+    //     .DATA_T (ldq_rvfi_reg_t)
+    // ) rvfi_reg (
+    //     .clk        (clk),
+    //     .rst        (rst),
+    //     .flush      (backend_flush),
+    //     .prv_valid  (dmem.resp),
+    //     .prv_ready  (),
+    //     .nxt_valid  (rvfi_out_valid),
+    //     .nxt_ready  (1'b1),
+    //     .prv_data   (rvfi_reg_in),
+    //     .nxt_data   (rvfi_reg_out)
+    // );
 
-    // Option 2: Pass-through (could be a bit bad for timing)
-    // assign cdb_reg_out = cdb_reg_in;
-    // assign rvfi_reg_out = rvfi_reg_in;
-    // assign cdb_out_valid = dmem.resp;
+    // Option 2: Pass-through — broadcast the load result the cycle the dcache
+    // responds instead of a cycle later, cutting load-to-use latency by one.
+    // The arbiter serializes loads (one outstanding) and gates dmem.resp for
+    // flushed loads, so a registered stage is not needed for correctness.
+    assign cdb_reg_out = cdb_reg_in;
+    assign rvfi_reg_out = rvfi_reg_in;
+    assign cdb_out_valid = dmem.resp;
+    assign rvfi_out_valid = dmem.resp;
 
     assign cdb_out.valid         = cdb_out_valid;
     assign cdb_out.rob_id        = cdb_reg_out.rob_id;
