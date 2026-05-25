@@ -83,4 +83,28 @@ import uop_types::*;
     assign ds_br_rs_block = top_tb.dut.backend_i.ds_stage_i.perf_br_rs_block;
     assign ds_mem_rs_block = top_tb.dut.backend_i.ds_stage_i.perf_mem_rs_block;
 
+    logic   [63:0]              cycle_cnt;
+    always_ff @(posedge clk) begin
+        if (rst) cycle_cnt <= '0;
+        else     cycle_cnt <= cycle_cnt + 1;
+    end
+
+    final begin
+        $display("==================== PERF MONITOR ====================");
+        $display("Cycles                 : %0d", cycle_cnt);
+        $display("--- Branches ---");
+        $display("Total branches         : %0d", br_cnt);
+        $display("  mispredicts          : %0d (%.2f%%)", br_mispredict_cnt, br_mispredict_rate*100.0);
+        $display("Conditional branches   : %0d", br_cond_cnt);
+        $display("  mispredicts          : %0d (%.2f%%)", br_cond_mispredict_cnt, br_cond_mispredict_rate*100.0);
+        $display("Unconditional (jal/jalr): %0d", br_uncond_cnt);
+        $display("  mispredicts          : %0d (%.2f%%)", br_uncond_mispredict_cnt, br_uncond_mispredict_rate*100.0);
+        $display("--- Dispatch stalls (cycles blocked by full RS) ---");
+        $display("INT  RS full           : %0d", ds_int_rs_block);
+        $display("INTM RS full           : %0d", ds_intm_rs_block);
+        $display("BR   RS full           : %0d", ds_br_rs_block);
+        $display("MEM  RS full           : %0d", ds_mem_rs_block);
+        $display("=====================================================");
+    end
+
 endmodule
