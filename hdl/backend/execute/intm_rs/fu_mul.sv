@@ -117,18 +117,39 @@ import int_rs_types::*;
     // Instantiation:
     //---------------------------------------------------------------------------------
 
-    localparam                  NUM_CYC_MUL = 3;        // minimal possible delay
-    localparam                  TC_MODE = 1;        // signed
-    localparam                  RST_MODE = 1;       // sync mode
-    localparam                  INPUT_MODE = 0;     // input must be stable during the computation
-    localparam                  OUTPUT_MODE = 0;    // output must be stable during the computation
-    localparam                  EARLY_START = 0;    // start computation in cycle 0
+    // Parallel pipelined multiplier (replaces the 3-cycle sequential DesignWare
+    // unit). A single signed 33x33 product is computed combinationally and
+    // pushed through MUL_LATENCY register stages, so latency is a direct design
+    // knob and throughput is one per cycle. Maps to FPGA DSP blocks; a/b are
+    // sign-extended so one signed multiply covers MUL/MULH/MULHSU/MULHU.
+    localparam  int unsigned    MUL_LATENCY = 2;
 
-    DW_mult_seq #(A_WIDTH, B_WIDTH, TC_MODE, NUM_CYC_MUL, 
-                RST_MODE, INPUT_MODE, OUTPUT_MODE, EARLY_START)
-    signed_mul (.clk(clk), .rst_n(~rst), .hold('0),
-                .start(mul_start), .a(a), .b(b),
-                .complete(complete), .product(product) );
+    logic signed [A_WIDTH-1:0]          a_s, b_s;
+    logic signed [A_WIDTH+B_WIDTH-1:0]  product_s;  // 66-bit context -> full signed product
+    logic [A_WIDTH+B_WIDTH-1:0]  product_comb;
+    logic [A_WIDTH+B_WIDTH-1:0]  product_pipe [MUL_LATENCY];
+    logic                        valid_pipe   [MUL_LATENCY];
+
+    assign a_s          = signed'(a);
+    assign b_s          = signed'(b);
+    assign product_s    = a_s * b_s;
+    assign product_comb = product_s;
+
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            for (int i = 0; i < MUL_LATENCY; i++) valid_pipe[i] <= 1'b0;
+        end else begin
+            product_pipe[0] <= product_comb;
+            valid_pipe[0]   <= mul_start;
+            for (int i = 1; i < MUL_LATENCY; i++) begin
+                product_pipe[i] <= product_pipe[i-1];
+                valid_pipe[i]   <= valid_pipe[i-1];
+            end
+        end
+    end
+
+    assign product  = product_pipe[MUL_LATENCY-1];
+    assign complete = valid_pipe[MUL_LATENCY-1];
 
     assign nxt_valid                = reg_valid && complete && ~mul_start;
     assign cdb_out.rob_id           = intm_rs_reg.rob_id;
