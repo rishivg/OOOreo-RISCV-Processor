@@ -141,7 +141,7 @@ import int_rs_types::*;
         end
     endgenerate
 
-    int_rs_ordered int_rs_i(
+    int_rs int_rs_i(
         .clk                    (clk),
         .rst                    (rst || backend_flush),
         .from_ds                (ds_int_rs_itf_i),
@@ -153,7 +153,7 @@ import int_rs_types::*;
 
     // intm_rs_gen scope retained for the perf_monitor hierarchical taps.
     generate if ( 1 ) begin : intm_rs_gen
-        intm_rs_normal intm_rs_i(
+        intm_rs intm_rs_i(
             .clk                    (clk),
             .rst                    (rst || backend_flush),
             .from_ds                (ds_intm_rs_itf_i),

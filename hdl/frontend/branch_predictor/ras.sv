@@ -32,7 +32,7 @@ import cpu_params::*;
 
     // Which fetched slot is the first one actually fetched this block.
     logic   [IF_WIDTH-1:0]  start_slot;
-    assign start_slot = (IF_WIDTH)'((pc & (IF_BLK_SIZE-1)) >> 2);
+    assign start_slot = ((pc & (IF_BLK_SIZE-1)) >> 2);
 
     // Per-slot predecode of RAS actions (RISC-V link registers are x1/x5).
     logic   [IF_WIDTH-1:0]  call_slot;
@@ -65,14 +65,14 @@ import cpu_params::*;
             push_en[i]  = 1'b0;
             push_idx[i] = '0;
             push_val[i] = '0;
-            if ((start_slot <= (IF_WIDTH)'(i)) && ~taken_seen) begin
+            if ((unsigned'(i) >= start_slot) && ~taken_seen) begin
                 if (ret_slot[i]) begin
                     predict_taken_out[i]  = 1'b1;
                     predict_target_out[i] = ras_spec_mem[t];        // predicted return target
-                    t = (RAS_IDX)'(t - 1'b1);                       // pop
+                    t = t - 1'b1;                                   // pop
                 end
                 if (call_slot[i]) begin
-                    t = (RAS_IDX)'(t + 1'b1);                       // push
+                    t = t + 1'b1;                                   // push
                     push_en[i]  = 1'b1;
                     push_idx[i] = t;
                     push_val[i] = blk_pc + 32'(unsigned'(i)) * 32'd4 + 32'd4;
@@ -87,8 +87,8 @@ import cpu_params::*;
     logic   [RAS_IDX-1:0]   tos_commit_next;
     always_comb begin
         tos_commit_next = tos_commit;
-        if (from_cb.update_en && from_cb.is_ret)  tos_commit_next = (RAS_IDX)'(tos_commit - 1'b1);
-        if (from_cb.update_en && from_cb.is_call) tos_commit_next = (RAS_IDX)'(tos_commit + 1'b1);
+        if (from_cb.update_en && from_cb.is_ret)  tos_commit_next = tos_commit - 1'b1;
+        if (from_cb.update_en && from_cb.is_call) tos_commit_next = tos_commit + 1'b1;
     end
 
     always_ff @(posedge clk) begin
@@ -108,7 +108,7 @@ import cpu_params::*;
                 tos_spec <= tos_commit_next;
                 for (int i = 0; i < RAS_DEPTH; i++) begin
                     ras_spec_mem[i] <= (from_cb.update_en && from_cb.is_call
-                                        && ((RAS_IDX)'(i) == tos_commit_next))
+                                        && (unsigned'(i) == tos_commit_next))
                                        ? (from_cb.pc + 32'd4) : ras_commit_mem[i];
                 end
             end else if (fetch_fire) begin

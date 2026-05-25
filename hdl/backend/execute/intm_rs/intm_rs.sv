@@ -1,4 +1,4 @@
-module intm_rs_normal
+module intm_rs
 import cpu_params::*;
 import uop_types::*;
 import int_rs_types::*;
