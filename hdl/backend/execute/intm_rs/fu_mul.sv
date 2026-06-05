@@ -135,10 +135,19 @@ import int_rs_types::*;
     assign product_s    = a_s * b_s;
     assign product_comb = product_s;
 
+    // Output backpressure: the CDB arbiter gives div priority (cdb_mul_ready =
+    // ~fu_div_valid in intm_rs), so a completed multiply can be held off when a
+    // divide broadcasts the same cycle. The datapath pipeline must FREEZE while
+    // its tail result is blocked -- otherwise it shifts the completed result out
+    // the next cycle and the result (and the instruction's CDB broadcast) is lost
+    // forever, hanging the ROB head. Only exercised by mul/div CDB contention.
+    logic output_stall;
+    assign output_stall = nxt_valid && ~nxt_ready;
+
     always_ff @(posedge clk) begin
         if (rst) begin
             for (int i = 0; i < MUL_LATENCY; i++) valid_pipe[i] <= 1'b0;
-        end else begin
+        end else if (~output_stall) begin
             product_pipe[0] <= product_comb;
             valid_pipe[0]   <= mul_start;
             for (int i = 1; i < MUL_LATENCY; i++) begin
