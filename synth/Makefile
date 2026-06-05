@@ -34,6 +34,14 @@ synth:
 		exit 1; \
 	fi
 
+# Open-source PPA + PD4 flow (sv2v -> yosys -> OpenROAD P&R -> STA). Needs Docker
+# (openroad/orfs image). Reuses an existing netlist_pnr.v unless --remap is passed.
+.PHONY: ppa ppa-remap
+ppa:
+	opensource/pnr/ppa.sh
+ppa-remap:
+	opensource/pnr/ppa.sh --remap
+
 .PHONY: clean
 clean:
 	rm -rf reports outputs work synthesis.log synthesis.ys

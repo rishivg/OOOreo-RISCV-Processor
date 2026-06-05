@@ -38,6 +38,30 @@ run_verilator_top_tb: verilator/build/Vtop_tb $(PROG)
 		+NO_DUMP_ALL_ECE411=1 \
 		|& tee simulation.log
 
+# ---- performance capture + regression gate (see bin/parse_perf.py, check_perf.py) ----
+PERF_DIR  := perf
+# program label defaults to the ELF basename without extension
+PERF_NAME ?= $(basename $(notdir $(PROG)))
+PERIOD_PS  = $(shell python3 $(PWD)/../bin/get_options.py clock)
+
+# Run one program and capture its perf JSON: make perf PROG=/abs/path/foo.elf
+.PHONY: perf
+perf: verilator/build/Vtop_tb
+	@$(MAKE) run_verilator_top_tb PROG="$(PROG)"
+	@mkdir -p $(PERF_DIR)
+	@python3 ../bin/parse_perf.py verilator/simulation.log \
+		--program $(PERF_NAME) --period-ps $(PERIOD_PS) -o $(PERF_DIR)/$(PERF_NAME).json
+
+# Gate all captured perf JSONs against the committed baseline (exit 1 on regression).
+.PHONY: perf-check
+perf-check:
+	@python3 ../bin/check_perf.py --baseline perf_baseline.json $(PERF_DIR)/*.json
+
+# Re-baseline after an intentional, reviewed change.
+.PHONY: perf-update
+perf-update:
+	@python3 ../bin/check_perf.py --baseline perf_baseline.json --update $(PERF_DIR)/*.json
+
 .PHONY: spike
 spike: $(ELF)
 	mkdir -p spike

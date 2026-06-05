@@ -1,0 +1,15 @@
+read_verilog -lib sram/output/dcache_data_array/dcache_data_array.v
+read_verilog -lib sram/output/dcache_tag_array/dcache_tag_array.v
+read_verilog -lib sram/output/icache_data_array/icache_data_array.v
+read_verilog -lib sram/output/icache_tag_array/icache_tag_array.v
+read_verilog -lib sram/output/mp_cache_data_array/mp_cache_data_array.v
+read_verilog -lib sram/output/mp_cache_tag_array/mp_cache_tag_array.v
+read_verilog -lib synth/opensource/dw_div_seq_bb.v
+read_verilog synth/opensource/cpu.v
+hierarchy -top cpu
+synth -top cpu
+dfflibmap -liberty synth/opensource/nangate45.lib
+abc -liberty synth/opensource/nangate45.lib -D 1000
+opt_clean -purge
+write_verilog -noattr synth/opensource/netlist.v
+tee -o synth/opensource/reports_area.txt stat -liberty synth/opensource/nangate45.lib -top cpu

@@ -1,0 +1,7 @@
+read_verilog arb_old.v
+synth -top issue_arbiter -flatten
+dfflibmap -liberty nangate45.lib
+abc -liberty nangate45.lib
+opt_clean -purge
+write_verilog -noattr arb_old_net.v
+tee -o area_old.txt stat -liberty nangate45.lib

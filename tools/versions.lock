@@ -1,0 +1,30 @@
+# OOOreo pinned toolchain — single source of truth for CI and local dev.
+# Reproducibility matters: the synth/PPA flow is version-sensitive (yosys 0.52
+# crashes on this design's $clog2(unsigned) pattern; it needs 0.64, which the
+# OpenROAD docker provides) and sv2v 0.0.13.1 has a $clog2 miscompile worked
+# around by a patched-source mirror. Pin so "works on my machine" == CI == EWS.
+#
+# Consumed by scripts/install_toolchain.sh and documented in flake.nix /
+# .devcontainer. Bump a line deliberately, in a reviewed commit.
+
+# --- simulation + lint (host tools) ---
+VERILATOR_VERSION=5.032            # Vtop_tb build + lint
+YOSYS_LINT_VERSION=0.52            # lint only; do NOT use for synth (see below)
+RISCV_GCC_VERSION=14.2.0           # riscv64-unknown-elf-gcc (rv32im multilib)
+PYTHON_MIN=3.10
+
+# --- SystemVerilog frontend ---
+SV2V_VERSION=0.0.13.1              # nixpkgs haskellPackages.sv2v; has the
+                                   # $clog2(unsigned localparam) bug -> patched
+                                   # source mirror in synth/opensource (see flow)
+
+# --- synthesis + P&R + STA (containerized; bundles yosys 0.64 + OpenROAD) ---
+ORFS_IMAGE=openroad/orfs@sha256:b19fe0a514a87aee0f97073797395c0ca489c45406b526bc75fd2038c82fdf69
+YOSYS_SYNTH_VERSION=0.64           # provided by ORFS_IMAGE (NOT host yosys)
+
+# --- formal (not vendored; reproducible bundle) ---
+OSS_CAD_SUITE=2024-12-01           # YosysHQ oss-cad-suite (sby + yosys + boolector + yices)
+RISCV_FORMAL_COMMIT=a64b696        # YosysHQ/riscv-formal (also pinned in formal/riscv-formal/fetch.sh)
+
+# --- nix dev shell ---
+NIXPKGS_REV=nixos-unstable         # flake.nix input; flake.lock pins the exact rev

@@ -1,0 +1,16 @@
+[options]
+# bounded model check: the free-list invariants are k-inductive-shallow safety
+# properties; 20 steps comfortably exercises fill/drain/flush.
+mode prove
+depth 20
+
+[engines]
+smtbmc boolector
+
+[script]
+# free_list_flat.v is produced by `make free_list` (sv2v flatten of fv/ + free_list).
+read_verilog -formal ../build/free_list_flat.v
+prep -top free_list_fv
+
+[files]
+../build/free_list_flat.v

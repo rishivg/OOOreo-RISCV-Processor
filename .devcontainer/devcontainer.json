@@ -1,0 +1,16 @@
+{
+  "name": "OOOreo RV32IM toolchain",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/nix:1": { "extraNixConfig": "experimental-features = nix-command flakes" }
+  },
+  "onCreateCommand": "scripts/install_toolchain.sh",
+  "postAttachCommand": "echo 'OOOreo: `nix develop` for the pinned shell, or use the host tools installed by install_toolchain.sh. See tools/versions.lock.'",
+  "remoteEnv": { "OOOREO_DEVCONTAINER": "1" },
+  "customizations": {
+    "vscode": {
+      "extensions": ["mshr-h.veriloghdl", "ms-python.python"]
+    }
+  }
+}

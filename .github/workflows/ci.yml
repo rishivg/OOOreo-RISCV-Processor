@@ -5,6 +5,8 @@ on:
     branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
+  schedule:
+    - cron: '0 7 * * *'   # nightly: fuzz + formal
   workflow_dispatch:
 
 jobs:
@@ -82,3 +84,83 @@ jobs:
 
       - name: Run Synthesis Flow
         run: ./scripts/run_ci.sh synth
+
+  # ---- #1 performance-regression gate: capture IPC and fail on a drop ----
+  performance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Sim Tools
+        run: ./scripts/install_toolchain.sh
+      - name: Cache Verilated Model
+        uses: actions/cache@v4
+        with:
+          path: sim/verilator/build
+          key: ${{ runner.os }}-verilator-model-${{ hashFiles('hdl/**/*.sv', 'pkg/**/*.sv', 'sim/verilator/**/*.cpp') }}
+      - name: Capture perf (coremark) + gate vs baseline
+        working-directory: sim
+        run: |
+          make perf PROG="$(pwd)/../testcode/coremark_im.elf" PERF_NAME=coremark_im
+          make perf-check
+      - name: Archive perf JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: perf-json, path: sim/perf/ }
+
+  # ---- #3 randomized ISA co-sim (nightly / manual): bug-hunt, non-blocking ----
+  fuzz:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Sim Tools
+        run: ./scripts/install_toolchain.sh
+      - name: Cache Verilated Model
+        uses: actions/cache@v4
+        with:
+          path: sim/verilator/build
+          key: ${{ runner.os }}-verilator-model-${{ hashFiles('hdl/**/*.sv', 'pkg/**/*.sv', 'sim/verilator/**/*.cpp') }}
+      - name: Generate + run random RV32IM programs (RVFI-checked)
+        working-directory: sim
+        run: |
+          for s in $(seq 1 16); do python3 ../bin/gen_fuzz.py --seed $s --n 400 -o ../testcode/fuzz/fuzz_$s.elf; done
+          # bug-hunt: a TIMEOUT/RVFI-error is a finding, surfaced in the summary
+          python3 regress.py ../testcode/fuzz/*.elf --timeout 120 || true
+      - name: Archive failing waveforms
+        if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: fuzz-logs, path: sim/verilator/simulation.log }
+
+  # ---- #2 formal: tier-1 module proofs (nightly / manual) ----
+  formal:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install oss-cad-suite (sby + yosys + solvers)
+        run: |
+          source tools/versions.lock
+          wget -q "https://github.com/YosysHQ/oss-cad-suite-build/releases/download/${OSS_CAD_SUITE}/oss-cad-suite-linux-x64-${OSS_CAD_SUITE//-/}.tgz" -O oss.tgz
+          tar xzf oss.tgz
+          echo "$PWD/oss-cad-suite/bin" >> "$GITHUB_PATH"
+      - name: Run module invariant proofs
+        run: make -C formal all
+
+  # ---- #4 PPA + PD4 (manual; needs Docker + ~1h on first --remap) ----
+  ppa:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain (pulls pinned OpenROAD image)
+        run: ./scripts/install_toolchain.sh
+      - name: Run PPA + PD4 flow
+        run: make -C synth ppa-remap
+      - name: Archive PPA/PD4 JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: ppa-pd4, path: synth/opensource/pnr/*.json }

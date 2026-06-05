@@ -1,0 +1,43 @@
+{
+  "coremark_im": {
+    "program": "coremark_im",
+    "ipc": 1.077556,
+    "ipc_kind": "segment",
+    "segment_cycles": 270578,
+    "run_cycles": 282870,
+    "clock_period_ps": 2780,
+    "branch": {
+      "total": 62280,
+      "total_mispredict": 1846,
+      "total_rate_pct": 2.96,
+      "cond_total": 56632,
+      "cond_mispredict": 1755,
+      "cond_rate_pct": 3.1,
+      "uncond_total": 5648,
+      "uncond_mispredict": 91,
+      "uncond_rate_pct": 1.61
+    },
+    "dispatch_stall": {
+      "int": 4970,
+      "intm": 114,
+      "br": 318,
+      "mem": 1266
+    },
+    "lsu": {
+      "loads": 56596,
+      "disambig_block": 6194,
+      "viol": 110,
+      "viol_flush": 106
+    },
+    "muldiv": {
+      "mul": 9570,
+      "div": 0
+    },
+    "dcache": {
+      "misses": 306,
+      "miss_stall_cyc": 2900,
+      "stb_full_cyc": 1882
+    },
+    "rvfi_errors": 0
+  }
+}

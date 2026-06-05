@@ -7,8 +7,15 @@ set -e
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TOOLS_DIR="$PROJECT_ROOT/fpga/tools"
 
+# Pinned versions — single source of truth (see tools/versions.lock).
+# shellcheck disable=SC1090
+set -a; . "$PROJECT_ROOT/tools/versions.lock"; set +a
+
 echo "====================================================================="
 echo "  OOOreo Development Environment Setup"
+echo "  Pins: verilator $VERILATOR_VERSION | yosys(lint) $YOSYS_LINT_VERSION |"
+echo "        sv2v $SV2V_VERSION | riscv-gcc $RISCV_GCC_VERSION"
+echo "        synth/PPA via $ORFS_IMAGE (yosys $YOSYS_SYNTH_VERSION + OpenROAD)"
 echo "====================================================================="
 
 # 1. System Dependencies (APT)
@@ -35,8 +42,16 @@ else
     echo "  - sv2v installed successfully."
 fi
 
-# 3. Python Dependencies
-echo "[3/3] Installing Python Dependencies..."
+# 3. Synthesis / PPA container (pinned by digest). Optional: skip with NO_DOCKER=1.
+echo "[3/4] Pulling pinned OpenROAD image for synth/PPA..."
+if [ -z "${NO_DOCKER:-}" ] && command -v docker >/dev/null 2>&1; then
+    docker pull "$ORFS_IMAGE" || echo "  - WARN: could not pull $ORFS_IMAGE (synth/PPA will fail until pulled)"
+else
+    echo "  - docker not present or NO_DOCKER set; skipping (synth/PPA needs it)."
+fi
+
+# 4. Python Dependencies
+echo "[4/4] Installing Python Dependencies..."
 # Install user-level python packages if needed (e.g., for sophisticated test runners)
 # pip3 install -r requirements.txt 2>/dev/null || echo "  - No requirements.txt found, skipping."
 

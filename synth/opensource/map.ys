@@ -1,0 +1,22 @@
+# Open-source synthesis: sv2v output -> Nangate45 mapped netlist (no flatten).
+read_verilog -lib ../../sram/output/dcache_data_array/dcache_data_array.v
+read_verilog -lib ../../sram/output/dcache_tag_array/dcache_tag_array.v
+read_verilog -lib ../../sram/output/icache_data_array/icache_data_array.v
+read_verilog -lib ../../sram/output/icache_tag_array/icache_tag_array.v
+read_verilog -lib ../../sram/output/mp_cache_data_array/mp_cache_data_array.v
+read_verilog -lib ../../sram/output/mp_cache_tag_array/mp_cache_tag_array.v
+
+read_verilog cpu.v
+hierarchy -top cpu
+
+# Coarse synthesis, keep hierarchy (avoid the flatten netlist explosion)
+proc; opt
+memory; opt
+techmap; opt
+
+dfflibmap -liberty nangate45.lib
+abc -liberty nangate45.lib
+opt_clean -purge
+
+write_verilog -noattr netlist.v
+tee -o reports_area.txt stat -liberty nangate45.lib -top cpu
