@@ -51,11 +51,7 @@ module lru_array #(
                 internal_array[i] <= '0;
             end
         end else begin
-            // [Soln 1] One-cycle write
-            // if (!web1) begin
-            //     internal_array[addr1] <= din1;
-            // end
-            // [Soln 2] Forwarding
+            // write port 1 is registered one cycle (read-after-write forwarding)
             if (!web1_reg) begin
                 internal_array[addr1_reg] <= din1_reg;
             end

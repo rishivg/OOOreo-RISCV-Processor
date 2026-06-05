@@ -120,9 +120,6 @@ import int_rs_types::*; #(
             end
         end
     end
-    // assign rs_bypass.rs1_bypass_en[CDB_WIDTH] = fast_bypass.valid && (fast_bypass.rd_phy != '0) && (entry_reg.rs1_phy == fast_bypass.rd_phy);
-    // assign rs_bypass.rs2_bypass_en[CDB_WIDTH] = fast_bypass.valid && (fast_bypass.rd_phy != '0) && (entry_reg.rs2_phy == fast_bypass.rd_phy);
-
 
     assign src1_ready = entry_reg.rs1_valid || |(rs_bypass.rs1_bypass_en);
     assign src2_ready = entry_reg.rs2_valid || |(rs_bypass.rs2_bypass_en);

@@ -4,3 +4,8 @@ verdi
 verilator
 spike
 run_output.txt
+
+# generated artifacts
+compile_output.log
+time.txt
+*.dis

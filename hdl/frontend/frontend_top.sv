@@ -148,7 +148,6 @@ import cpu_params::*;
     assign if1_ready = to_fifo.ready;
     assign to_fifo.valid = if1_valid;
     assign to_fifo.packet.inst = insts;
-    // assign to_fifo.packet.predict_taken = predict_taken_en;
     assign blk_pc = pc & ~(unsigned'(IF_BLK_SIZE - 1));
     generate for (genvar i = 0; i < IF_WIDTH; i++) begin
         assign to_fifo.packet.predict_taken[i] = predict_taken[i];

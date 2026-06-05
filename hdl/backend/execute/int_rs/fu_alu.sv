@@ -24,8 +24,7 @@ import int_rs_types::*;
     // FU_ALU_REG //
     ////////////////
 
-    // to int_rs
-    // assign fu_alu_ready = ~fu_alu_valid || (fu_alu_valid && cdb_ready)
+    // ALU is single-cycle and always ready (its result is on the fast-bypass net)
     assign fu_alu_ready = 1'b1;
 
     always_ff @(posedge clk) begin 

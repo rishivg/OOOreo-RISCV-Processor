@@ -155,6 +155,4 @@ import int_rs_types::*;
         .br_cdb                 (br_cdb_out)
     );
 
-    // pipeline_reg 
-
 endmodule

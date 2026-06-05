@@ -41,16 +41,6 @@ import int_rs_types::*;
         end
     end
 
-    // logic   [CDB_WIDTH-1:0] prf_bypass_rs1 [CDB_WIDTH];
-    // logic   [CDB_WIDTH-1:0] prf_bypass_rs2 [CDB_WIDTH];
-
-    // generate for (genvar i = 0; i < CDB_WIDTH; i++) begin
-    //     for (genvar j = 0; j < CDB_WIDTH; j++) begin
-    //         assign prf_bypass_rs1[i][j] = cdb_local[j].valid && (cdb_local[j].rd_phy != '0) && (cdb_local[j].rd_phy == from_rs_local_in[i].rs1_phy);
-    //         assign prf_bypass_rs2[i][j] = cdb_local[j].valid && (cdb_local[j].rd_phy != '0) && (cdb_local[j].rd_phy == from_rs_local_in[i].rs2_phy);
-    //     end
-    // end endgenerate
-
     always_comb begin
         for (int i = 0; i < CDB_WIDTH; i++) begin
             // Unfortunatly, we cannot generate a case statement based on CDB_WIDTH
