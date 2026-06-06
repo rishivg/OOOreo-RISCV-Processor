@@ -75,6 +75,14 @@ package cpu_params;
     localparam  unsigned    D_PLRU_BITS   = D_NUM_WAYS - 1;
     localparam  unsigned    D_WAY_BITS    = $clog2(D_NUM_WAYS);
 
+    // ICache Parameters. CoreMark's instruction footprint exceeds a 16-set (2KB)
+    // I-cache -> ~17% of cycles stall on I-cache misses (3171 of them). 64 sets
+    // (8KB) cuts the capacity misses. TAG = 32 - SET - OFFSET.
+    localparam  unsigned    I_OFFSET_IDX  = 5;
+    localparam  unsigned    I_SET_IDX     = 6;
+    localparam  unsigned    I_TAG_IDX     = 32 - I_SET_IDX - I_OFFSET_IDX;
+    localparam  unsigned    I_NUM_WAYS    = 4;
+
 endpackage
 
 package rv32i_types;
@@ -321,12 +329,13 @@ import cpu_params::*;
 endpackage
 
 package icache_types;
+import cpu_params::*;
 
     typedef struct packed {
-        logic           read;
-        logic   [4:0]   offset;
-        logic   [3:0]   set_i;
-        logic   [22:0]  tag;
+        logic                       read;
+        logic   [I_OFFSET_IDX-1:0]  offset;
+        logic   [I_SET_IDX-1:0]     set_i;
+        logic   [I_TAG_IDX-1:0]     tag;
     } icache_stage_reg_t;
 
     typedef enum logic [1:0] {

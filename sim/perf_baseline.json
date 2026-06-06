@@ -1,42 +1,42 @@
 {
   "coremark_im": {
     "program": "coremark_im",
-    "ipc": 1.077556,
+    "ipc": 1.224545,
     "ipc_kind": "segment",
-    "segment_cycles": 270578,
-    "run_cycles": 282870,
+    "segment_cycles": 238099,
+    "run_cycles": 250376,
     "clock_period_ps": 2780,
     "branch": {
-      "total": 62280,
-      "total_mispredict": 1846,
-      "total_rate_pct": 2.96,
-      "cond_total": 56632,
-      "cond_mispredict": 1755,
-      "cond_rate_pct": 3.1,
-      "uncond_total": 5648,
+      "total": 62353,
+      "total_mispredict": 1857,
+      "total_rate_pct": 2.98,
+      "cond_total": 56690,
+      "cond_mispredict": 1766,
+      "cond_rate_pct": 3.12,
+      "uncond_total": 5663,
       "uncond_mispredict": 91,
       "uncond_rate_pct": 1.61
     },
     "dispatch_stall": {
-      "int": 4970,
+      "int": 9979,
       "intm": 114,
-      "br": 318,
-      "mem": 1266
+      "br": 270,
+      "mem": 1336
     },
     "lsu": {
-      "loads": 56596,
-      "disambig_block": 6194,
-      "viol": 110,
-      "viol_flush": 106
+      "loads": 56674,
+      "disambig_block": 6307,
+      "viol": 111,
+      "viol_flush": 107
     },
     "muldiv": {
-      "mul": 9570,
+      "mul": 9585,
       "div": 0
     },
     "dcache": {
-      "misses": 306,
-      "miss_stall_cyc": 2900,
-      "stb_full_cyc": 1882
+      "misses": 310,
+      "miss_stall_cyc": 2804,
+      "stb_full_cyc": 1914
     },
     "rvfi_errors": 0
   }

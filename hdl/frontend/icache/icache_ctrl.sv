@@ -89,7 +89,7 @@ import icache_types::*; #(
         hit_way = 'x;
 
         for (int i = 0; i < NUM_WAYS; i++) begin
-            if (tag_arr_out[i][22:0] == tag && valid_arr_out[i]) begin
+            if (tag_arr_out[i][TAG_IDX-1:0] == tag && valid_arr_out[i]) begin
                 hit = 1'b1;
                 hit_way = WAY_BITS'(unsigned'(i));
             end

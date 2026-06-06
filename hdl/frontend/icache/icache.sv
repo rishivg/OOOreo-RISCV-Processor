@@ -1,10 +1,10 @@
-module icache 
-import icache_types::*; #(
+module icache
+import icache_types::*, cpu_params::*; #(
             parameter       IF_WIDTH    = 2,
-            parameter       OFFSET_IDX  = 5,
-            parameter       SET_IDX     = 4,
-            parameter       TAG_IDX     = 23,
-            parameter       NUM_WAYS    = 4
+            parameter       OFFSET_IDX  = I_OFFSET_IDX,
+            parameter       SET_IDX     = I_SET_IDX,
+            parameter       TAG_IDX     = I_TAG_IDX,
+            parameter       NUM_WAYS    = I_NUM_WAYS
 )
 (
     input   logic           clk,
@@ -68,7 +68,9 @@ import icache_types::*; #(
     assign sram_operating_set = (~stall || kill) ? ufp_set : stage_reg.set_i;
 
     generate for (genvar i = 0; i < NUM_WAYS; i++) begin : arrays
-        icache_data_array data_array (
+        icache_data_array #(
+            .ADDR_WIDTH (SET_IDX)
+        ) data_array (
             .clk0       (clk),
             .csb0       (data_csb0[i]),
             .web0       (data_web0[i]),
@@ -77,7 +79,9 @@ import icache_types::*; #(
             .din0       (data_din0),
             .dout0      (data_dout0[i])
         );
-        icache_tag_array tag_array (
+        icache_tag_array #(
+            .ADDR_WIDTH (SET_IDX)
+        ) tag_array (
             .clk0       (clk),
             .csb0       (tag_csb0[i]),
             .web0       (tag_web0[i]),
