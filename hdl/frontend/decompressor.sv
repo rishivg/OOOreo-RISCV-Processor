@@ -121,7 +121,7 @@ module decompressor (
                     3'b100: begin
                         unique case (inst_in[11:10])
                             2'b00: inst_out = enc_i({6'b0, inst_in[12], inst_in[6:2]}, rs1_p, 3'b101, rs1_p, 7'b0010011); // c.srli
-                            2'b01: inst_out = enc_i({6'b010000, inst_in[6:2]} | {6'b0, inst_in[12], 5'b0}, rs1_p, 3'b101, rs1_p, 7'b0010011); // c.srai
+                            2'b01: inst_out = enc_i({7'b0100000, inst_in[6:2]}, rs1_p, 3'b101, rs1_p, 7'b0010011); // c.srai (funct7=0100000 => arithmetic)
                             2'b10: inst_out = enc_i(imm_ci, rs1_p, 3'b111, rs1_p, 7'b0010011); // c.andi
                             2'b11: begin
                                 unique case ({inst_in[12], inst_in[6:5]})

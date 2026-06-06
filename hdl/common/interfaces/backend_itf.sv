@@ -554,6 +554,7 @@ import cpu_params::*;
     logic   [GHR_LEN-1:0]   ghr;        // history snapshot used when this branch was predicted
     logic                   is_call;    // committed branch pushes a return address (RAS)
     logic                   is_ret;     // committed branch pops a return address (RAS)
+    logic                   is_compressed; // RVC: return address = pc+2 (else pc+4)
 
     modport cb (
         output              update_en,
@@ -563,7 +564,8 @@ import cpu_params::*;
         output              target_address,
         output              ghr,
         output              is_call,
-        output              is_ret
+        output              is_ret,
+        output              is_compressed
     );
 
     modport bp (
@@ -574,7 +576,8 @@ import cpu_params::*;
         input               target_address,
         input               ghr,
         input               is_call,
-        input               is_ret
+        input               is_ret,
+        input               is_compressed
     );
 
 endinterface

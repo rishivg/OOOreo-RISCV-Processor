@@ -5,7 +5,7 @@ import cpu_params::*;
     input   logic                   rst,
 
     cb_bp_itf.bp                    from_cb,
-    input   logic [31:0]            blk_pc,
+    input   logic [IF_WIDTH-1:0] [31:0] inst_pc,    // per-instruction (realigned) PC
 
     // Speculative history update, driven from the fetch stage.
     input   logic                   flush,          // backend misprediction recovery
@@ -115,7 +115,7 @@ import cpu_params::*;
             automatic logic prov_v;
             automatic int   prov_t;
             automatic logic alt_p;
-            pc_in[i] = blk_pc + 32'(unsigned'(i)) * 32'd4;
+            pc_in[i] = inst_pc[i];
             base_pred[i] = bimodal[pc_in[i][PHT_IDX+1:2]] >= 2'b10;
             for (int t = 0; t < TAGE_NUM; t++) begin
                 p_ent[i][t] = tt[t][idx_comb(pc_in[i], fidx_s[t])];

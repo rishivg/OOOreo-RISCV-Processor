@@ -62,6 +62,7 @@ import uop_types::*;
         assign uops[i].valid = uops_valid[i];
         assign uops[i].pc = from_fifo.packet.pc[i];
         assign uops[i].inst = from_fifo.packet.inst[i];
+        assign uops[i].is_compressed = from_fifo.packet.is_compressed[i];
         assign uops[i].rs_type = rs_type[i];
         assign uops[i].fu_type = fu_type[i];
         assign uops[i].fu_opcode = fu_opcode[i];
@@ -208,7 +209,9 @@ import uop_types::*;
 
     generate for (genvar i = 0; i < ID_WIDTH; i++) begin
         assign to_rob.rvfi_dbg[i].order = 'x;
-        assign to_rob.rvfi_dbg[i].inst = uops[i].inst;
+        // RVFI reports the original (un-decompressed) encoding: the monitor uses
+        // inst[1:0] to tell 16- vs 32-bit and decodes RVC itself.
+        assign to_rob.rvfi_dbg[i].inst = from_fifo.packet.inst_raw[i];
         assign to_rob.rvfi_dbg[i].rs1_addr = rs1_arch[i];
         assign to_rob.rvfi_dbg[i].rs2_addr = rs2_arch[i];
         assign to_rob.rvfi_dbg[i].rs1_rdata = 'x;

@@ -38,6 +38,7 @@ import int_rs_types::*;
     assign from_ds_entry.imm        = from_ds.uop.imm;
     assign from_ds_entry.pc         = from_ds.uop.pc;
     assign from_ds_entry.fu_opcode  = from_ds.uop.fu_opcode;
+    assign from_ds_entry.is_compressed = from_ds.uop.is_compressed;
     assign from_ds_entry.predict_taken = from_ds.uop.predict_taken;
     assign from_ds_entry.predict_target = from_ds.uop.predict_target;
 
@@ -137,6 +138,7 @@ import int_rs_types::*;
     assign fu_br_reg_in.fu_opcode      = issued_entry.fu_opcode;
     assign fu_br_reg_in.imm            = issued_entry.imm;
     assign fu_br_reg_in.pc             = issued_entry.pc;
+    assign fu_br_reg_in.is_compressed  = issued_entry.is_compressed;
     assign fu_br_reg_in.predict_taken  = issued_entry.predict_taken;
     assign fu_br_reg_in.predict_target = issued_entry.predict_target;
 

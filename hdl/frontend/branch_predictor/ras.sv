@@ -6,8 +6,9 @@ import cpu_params::*;
 
     input   logic                   flush,          // backend misprediction recovery
     input   logic                   fetch_fire,     // a fetch block is consumed this cycle
-    input   logic   [31:0]          blk_pc,         // block-aligned fetch PC
-    input   logic   [31:0]          pc,             // actual fetch PC (may start mid-block)
+    input   logic   [IF_WIDTH-1:0]  [31:0]  inst_pc,    // per-instruction (realigned) PC
+    input   logic   [IF_WIDTH-1:0]  [31:0]  seq_next,   // per-instruction fall-through PC (return addr)
+    input   logic   [IF_WIDTH-1:0]          inst_valid, // which slots are present instructions
     input   logic   [IF_WIDTH-1:0]  [31:0]  insts,
 
     // Prediction coming in from the uBTB; the RAS overrides return targets.
@@ -19,8 +20,6 @@ import cpu_params::*;
     // Commit feedback (resolved, in-order) used to recover the stack.
     cb_bp_itf.bp                    from_cb
 );
-    localparam  unsigned    IF_BLK_SIZE = IF_WIDTH * 4;
-
     // Two stacks with a speculative/committed split: tos_spec drives
     // prediction and is corrupted freely by wrong-path fetch; ras_commit_mem /
     // tos_commit are touched only by committed calls/returns and never see the
@@ -29,10 +28,6 @@ import cpu_params::*;
     logic   [31:0]          ras_commit_mem [RAS_DEPTH];
     logic   [RAS_IDX-1:0]   tos_spec;
     logic   [RAS_IDX-1:0]   tos_commit;
-
-    // Which fetched slot is the first one actually fetched this block.
-    logic   [IF_WIDTH-1:0]  start_slot;
-    assign start_slot = ((pc & (IF_BLK_SIZE-1)) >> 2);
 
     // Per-slot predecode of RAS actions (RISC-V link registers are x1/x5).
     logic   [IF_WIDTH-1:0]  call_slot;
@@ -65,7 +60,7 @@ import cpu_params::*;
             push_en[i]  = 1'b0;
             push_idx[i] = '0;
             push_val[i] = '0;
-            if ((unsigned'(i) >= start_slot) && ~taken_seen) begin
+            if (inst_valid[i] && ~taken_seen) begin
                 if (ret_slot[i]) begin
                     predict_taken_out[i]  = 1'b1;
                     predict_target_out[i] = ras_spec_mem[t];        // predicted return target
@@ -75,13 +70,17 @@ import cpu_params::*;
                     t = t + 1'b1;                                   // push
                     push_en[i]  = 1'b1;
                     push_idx[i] = t;
-                    push_val[i] = blk_pc + 32'(unsigned'(i)) * 32'd4 + 32'd4;
+                    push_val[i] = seq_next[i];                      // return addr = pc + stride
                 end
                 if (predict_taken_out[i]) taken_seen = 1'b1;
             end
         end
         tos_next = t;
     end
+
+    // Committed return address = committed call's PC + its length (RVC: +2 / +4).
+    logic   [31:0]          commit_ret_addr;
+    assign commit_ret_addr = from_cb.pc + (from_cb.is_compressed ? 32'd2 : 32'd4);
 
     // Committed stack: advanced only by resolved (in-order) calls/returns.
     logic   [RAS_IDX-1:0]   tos_commit_next;
@@ -99,7 +98,7 @@ import cpu_params::*;
             // Commit stack updates (immune to the wrong path).
             tos_commit <= tos_commit_next;
             if (from_cb.update_en && from_cb.is_call) begin
-                ras_commit_mem[tos_commit_next] <= from_cb.pc + 32'd4;
+                ras_commit_mem[tos_commit_next] <= commit_ret_addr;
             end
 
             // Spec stack: resync from the committed stack on flush (folding in
@@ -109,7 +108,7 @@ import cpu_params::*;
                 for (int i = 0; i < RAS_DEPTH; i++) begin
                     ras_spec_mem[i] <= (from_cb.update_en && from_cb.is_call
                                         && (unsigned'(i) == tos_commit_next))
-                                       ? (from_cb.pc + 32'd4) : ras_commit_mem[i];
+                                       ? commit_ret_addr : ras_commit_mem[i];
                 end
             end else if (fetch_fire) begin
                 tos_spec <= tos_next;

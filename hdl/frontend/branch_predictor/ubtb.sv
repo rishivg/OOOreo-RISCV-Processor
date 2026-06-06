@@ -8,7 +8,8 @@ import uop_types::*;
     cb_bp_itf.bp                            from_cb,
 
     input   logic [IF_WIDTH-1:0]            predict_taken_gshare,
-    input   logic [31:0]                    blk_pc,
+    input   logic [IF_WIDTH-1:0]  [31:0]    inst_pc,    // per-instruction (realigned) PC
+    input   logic [IF_WIDTH-1:0]  [31:0]    seq_next,   // per-instruction fall-through PC
     output  logic [IF_WIDTH-1:0]  [31:0]    predict_target,
     output  logic [IF_WIDTH-1:0]	        predict_taken
 );
@@ -147,8 +148,8 @@ import uop_types::*;
     generate for (genvar w = 0; w < IF_WIDTH; w++) begin
         always_comb begin
 	        predict_taken[w] = 1'b0;
-            pc_in[w] = blk_pc + unsigned'(w) * 4;
-            predict_target[w] = blk_pc + unsigned'(w) * 4 + 4;
+            pc_in[w] = inst_pc[w];
+            predict_target[w] = seq_next[w];
             for (int i = 0; i < UBTB_DEPTH; i++) begin
                 if (predict_taken_gshare[w] && br_ubtb[i].valid && (br_ubtb[i].tag == pc_in[w][UBTB_TAG_IDX+1:2])) begin
                     predict_target[w] = br_ubtb[i].target;

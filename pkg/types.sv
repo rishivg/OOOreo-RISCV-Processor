@@ -1,6 +1,8 @@
 package cpu_params;
 
     localparam  unsigned    IF_WIDTH    = 2;
+    // Width of a parcel count in [0 .. 2*IF_WIDTH] (C-extension fetch realignment).
+    localparam  unsigned    PARCEL_CNT_W = $clog2(2*IF_WIDTH + 1);
 
     localparam  unsigned    ID_WIDTH    = 2;
     localparam  unsigned    ID_WIDTH_IDX= $clog2(ID_WIDTH);
@@ -212,6 +214,8 @@ import cpu_params::*;
 
     typedef struct packed {
         logic   [IF_WIDTH-1:0]  [31:0]  inst;
+        logic   [IF_WIDTH-1:0]  [31:0]  inst_raw;       // original encoding (RVFI) before decompression
+        logic   [IF_WIDTH-1:0]          is_compressed;  // RVC: slot was a 16-bit instruction
         logic   [IF_WIDTH-1:0]          predict_taken;
         logic   [IF_WIDTH-1:0]  [31:0]  predict_target;
         logic   [IF_WIDTH-1:0]  [31:0]  pc;         // per-slot (variable-length-ready)
@@ -225,6 +229,8 @@ import cpu_params::*;
     // slot so the back-end "branch is youngest in its bundle" invariant holds.
     typedef struct packed {
         logic   [IF_WIDTH-1:0]  [31:0]          inst;
+        logic   [IF_WIDTH-1:0]  [31:0]          inst_raw;       // original encoding (RVFI)
+        logic   [IF_WIDTH-1:0]                  is_compressed;  // RVC: slot was 16-bit
         logic   [IF_WIDTH-1:0]                  predict_taken;
         logic   [IF_WIDTH-1:0]  [31:0]          predict_target;
         logic   [IF_WIDTH-1:0]  [31:0]          pc;
@@ -315,6 +321,7 @@ import cpu_params::*;
 
         logic   [31:0]          pc;
         logic   [31:0]          inst;
+        logic                   is_compressed; // RVC: instruction was 16-bit (PC stride +2)
 
         logic   [1:0]           rs_type;    // Reservation Station type
         logic   [1:0]           fu_type;    // Functional Unit type
@@ -427,6 +434,7 @@ import uop_types::*;
         logic   [31:0]          imm;
         logic   [31:0]          pc;
         logic   [3:0]           fu_opcode;
+        logic                   is_compressed; // RVC: PC stride +2 for fall-through / link
         logic                   predict_taken;
         logic   [31:0]          predict_target;
     } br_rs_entry_t;
@@ -464,6 +472,7 @@ import uop_types::*;
         logic   [31:0]          rs1_value;
         logic   [31:0]          rs2_value;
 
+        logic                   is_compressed; // RVC: PC stride +2 for fall-through / link
         logic                   predict_taken; // Branch prediction
         logic   [31:0]          predict_target; // Branch prediction target
 

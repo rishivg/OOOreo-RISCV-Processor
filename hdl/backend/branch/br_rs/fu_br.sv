@@ -49,6 +49,10 @@ import int_rs_types::*;
     // calculate target address
     logic   [31:0]  target_address;
 
+    // PC of the next sequential instruction (RVC: +2 for compressed, else +4)
+    logic   [31:0]  pc_next_seq;
+    assign pc_next_seq = fu_br_reg_out.pc + (fu_br_reg_out.is_compressed ? 32'd2 : 32'd4);
+
     // calculate branch taken
     logic   [31:0]  a;
     logic   [31:0]  b;
@@ -84,8 +88,8 @@ import int_rs_types::*;
     always_comb begin 
         if (branch_taken) begin 
             target_address = (fu_br_reg_out.fu_opcode == BR_JALR) ? ((fu_br_reg_out.rs1_value + fu_br_reg_out.imm) & 32'hfffffffe) : fu_br_reg_out.pc + fu_br_reg_out.imm;
-        end else begin 
-            target_address = fu_br_reg_out.pc + 32'd4;
+        end else begin
+            target_address = pc_next_seq;
         end
     end
 
@@ -97,7 +101,7 @@ import int_rs_types::*;
         if (fu_br_reg_out.fu_opcode == BR_AUIPC) begin
             rd_value = fu_br_reg_out.pc + fu_br_reg_out.imm;
         end else begin
-            rd_value = fu_br_reg_out.pc + 32'd4;
+            rd_value = pc_next_seq;
         end
     end
 

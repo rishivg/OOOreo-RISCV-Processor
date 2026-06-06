@@ -66,6 +66,8 @@ import fetch_types::*, cpu_params::*; #(
     localparam int NC = 2*IF_WIDTH;     // 4 candidates
     logic                       c_v   [NC];
     logic   [31:0]              c_inst[NC];
+    logic   [31:0]              c_raw [NC];
+    logic                       c_comp[NC];
     logic   [31:0]              c_pc  [NC];
     logic   [GHR_LEN-1:0]       c_ghr [NC];
     logic                       c_pt  [NC];
@@ -81,6 +83,8 @@ import fetch_types::*, cpu_params::*; #(
             c_slot[s] = (ADDR_IDX)'(s);
             c_v   [s] = have_h && (unsigned'(s) >= rd_slot) && head.valid[s];
             c_inst[s] = head.inst[s];
+            c_raw [s] = head.inst_raw[s];
+            c_comp[s] = head.is_compressed[s];
             c_pc  [s] = head.pc[s];
             c_ghr [s] = head.ghr;
             c_pt  [s] = head.predict_taken[s];
@@ -91,6 +95,8 @@ import fetch_types::*, cpu_params::*; #(
             c_slot[IF_WIDTH+s] = (ADDR_IDX)'(s);
             c_v   [IF_WIDTH+s] = have_h1 && head1.valid[s];
             c_inst[IF_WIDTH+s] = head1.inst[s];
+            c_raw [IF_WIDTH+s] = head1.inst_raw[s];
+            c_comp[IF_WIDTH+s] = head1.is_compressed[s];
             c_pc  [IF_WIDTH+s] = head1.pc[s];
             c_ghr [IF_WIDTH+s] = head1.ghr;
             c_pt  [IF_WIDTH+s] = head1.predict_taken[s];
@@ -101,6 +107,8 @@ import fetch_types::*, cpu_params::*; #(
 
     // ---- compact the valid candidates into an ordered stream ----
     logic   [31:0]              s_inst[IF_WIDTH];
+    logic   [31:0]              s_raw [IF_WIDTH];
+    logic                       s_comp[IF_WIDTH];
     logic   [31:0]              s_pc  [IF_WIDTH];
     logic   [GHR_LEN-1:0]       s_ghr [IF_WIDTH];
     logic                       s_pt  [IF_WIDTH];
@@ -112,12 +120,14 @@ import fetch_types::*, cpu_params::*; #(
     always_comb begin
         automatic int k = 0;
         for (int i = 0; i < IF_WIDTH; i++) begin
-            s_inst[i] = 'x; s_pc[i] = 'x; s_ghr[i] = 'x; s_pt[i] = 1'b0;
+            s_inst[i] = 'x; s_raw[i] = 'x; s_comp[i] = 1'b0; s_pc[i] = 'x; s_ghr[i] = 'x; s_pt[i] = 1'b0;
             s_ptgt[i] = 'x; s_br[i] = 1'b0; s_src[i] = '0;
         end
         for (int j = 0; j < NC; j++) begin
             if (c_v[j] && (k < IF_WIDTH)) begin
                 s_inst[k] = c_inst[j];
+                s_raw [k] = c_raw[j];
+                s_comp[k] = c_comp[j];
                 s_pc  [k] = c_pc[j];
                 s_ghr [k] = c_ghr[j];
                 s_pt  [k] = c_pt[j];
@@ -148,12 +158,21 @@ import fetch_types::*, cpu_params::*; #(
     end
 
     // ---- drive the output interface ----
-    assign out.valid = have_h && (n_avail != '0);
+    // A pure C-extension span-fetch cycle can enqueue a packet with no valid
+    // instructions (its single 32-bit instruction straddled the block boundary
+    // and was carried). Such an empty head packet must be skipped, not streamed,
+    // or it would block the queue forever (deq_fire never fires on it).
+    logic                   head_empty;
+    assign head_empty = have_h && (head.valid == '0);
+
+    assign out.valid = have_h && ~head_empty && (n_avail != '0);
     always_comb begin
         out.packet = '0;
         for (int i = 0; i < IF_WIDTH; i++) begin
             out.packet.valid[i]          = bundle_valid[i];
             out.packet.inst[i]           = s_inst[i];
+            out.packet.inst_raw[i]       = s_raw[i];
+            out.packet.is_compressed[i]  = s_comp[i];
             out.packet.pc[i]             = s_pc[i];
             out.packet.ghr[i]            = s_ghr[i];
             out.packet.predict_taken[i]  = s_pt[i];
@@ -173,7 +192,11 @@ import fetch_types::*, cpu_params::*; #(
     always_comb begin
         nxt_rd_ptr  = rd_ptr;
         nxt_rd_slot = rd_slot;
-        if (deq_fire) begin
+        if (head_empty) begin
+            // discard the empty span-fetch packet
+            nxt_rd_ptr  = (ADDR_IDX+1)'(rd_ptr + 1);
+            nxt_rd_slot = '0;
+        end else if (deq_fire) begin
             if (c_inh[last_src]) begin
                 // last consumed instr was in the head packet
                 if (head.valid[1] && (c_slot[last_src] == '0)) begin

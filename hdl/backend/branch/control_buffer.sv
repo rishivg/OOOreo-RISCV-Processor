@@ -24,6 +24,7 @@ import uop_types::*;
         logic   [GHR_LEN-1:0]   ghr;        // global history snapshot captured when predicted
         logic                   is_call;    // RAS: jal/jalr writing a link register (x1/x5)
         logic                   is_ret;     // RAS: jalr reading a link register, not writing one
+        logic                   is_compressed; // RVC: pushed return address = pc+2 (else pc+4)
     } cb_entry_t;
 
     // RAS classification of the enqueuing branch (RISC-V calling convention:
@@ -70,6 +71,7 @@ import uop_types::*;
                 fifo[wr_ptr_actual].ghr <= from_ds.uop.ghr;
                 fifo[wr_ptr_actual].is_call <= enq_is_call;
                 fifo[wr_ptr_actual].is_ret <= enq_is_ret;
+                fifo[wr_ptr_actual].is_compressed <= from_ds.uop.is_compressed;
                 wr_ptr <= (CB_IDX+1)'(wr_ptr + 1);
             end
 
@@ -112,5 +114,6 @@ import uop_types::*;
     assign to_bp.ghr            = fifo[rd_ptr_actual].ghr;
     assign to_bp.is_call        = fifo[rd_ptr_actual].is_call;
     assign to_bp.is_ret         = fifo[rd_ptr_actual].is_ret;
+    assign to_bp.is_compressed  = fifo[rd_ptr_actual].is_compressed;
 
 endmodule
