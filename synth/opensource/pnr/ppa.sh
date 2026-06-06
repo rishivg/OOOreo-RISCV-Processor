@@ -21,8 +21,12 @@ PERIOD_PS=$(python3 bin/get_options.py clock)          # e.g. 2780
 PERIOD_NS=$(python3 -c "print($PERIOD_PS/1000.0)")
 
 if [[ "${1:-}" == "--remap" || ! -f "$DIR/netlist_pnr.v" ]]; then
-  echo "[ppa] yosys mapping (real fakeram macros)..."
-  docker run --rm -v "$ROOT":/w -w /w "$IMG" yosys -s "$DIR/map_pnr.ys" \
+  # PNR_FAST_MAP=1 uses abc -fast (single-pass map, ~5x faster) instead of the
+  # timing-iterated abc -D 1000. Lower QoR but fine for relative A/B sweeps.
+  MAP_YS="$DIR/map_pnr.ys"
+  if [[ "${PNR_FAST_MAP:-}" == "1" ]]; then MAP_YS="$DIR/map_pnr_fast.ys"; fi
+  echo "[ppa] yosys mapping (real fakeram macros) via $(basename "$MAP_YS")..."
+  docker run --rm -v "$ROOT":/w -w /w "$IMG" yosys -s "$MAP_YS" \
     > "$DIR/yosys_pnr.log" 2>&1
 fi
 
@@ -32,7 +36,17 @@ perl -0777 -pi -e 's/DW_div_seq\s*#\([^)]*(?:\([^)]*\)[^)]*)*\)\s*divider\s*\(/D
   "$DIR/netlist_pnr.v"
 
 echo "[ppa] OpenROAD floorplan -> place -> repair_design -> STA @ ${PERIOD_NS} ns..."
-docker run --rm -e ECE411_CLOCK_PERIOD_PS="$PERIOD_PS" -v "$ROOT":/w -w /w "$IMG" \
+# Forward optional floorplan knobs (die size / placement density / CTS) so a
+# tighter floorplan can be swept without editing run_pnr.tcl. Unset -> run_pnr.tcl
+# defaults reproduce the original loose 1600um / density-0.6 / ideal-clock run.
+# PNR_GPU=1 adds --gpus all so OpenROAD's CUDA global placer can run (needs
+# nvidia-container-toolkit; OpenROAD auto-uses the GPU when one is visible).
+GPU_FLAG=""
+if [[ "${PNR_GPU:-}" == "1" ]]; then GPU_FLAG="--gpus all"; fi
+docker run --rm $GPU_FLAG -e ECE411_CLOCK_PERIOD_PS="$PERIOD_PS" \
+  -e PNR_DIE_UM="${PNR_DIE_UM:-}" -e PNR_DENSITY="${PNR_DENSITY:-}" -e PNR_CTS="${PNR_CTS:-}" \
+  -e PNR_OUT="${PNR_OUT:-}" -e PNR_WRITE_DEF="${PNR_WRITE_DEF:-}" \
+  -v "$ROOT":/w -w /w "$IMG" \
   /OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad -no_init -exit \
   "$DIR/run_pnr.tcl" > "$DIR/openroad_pnr.log" 2>&1
 

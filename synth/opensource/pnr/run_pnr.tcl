@@ -42,7 +42,20 @@ set_output_delay 0.1 -clock clk [all_outputs]
 puts "INFO: clock period = $period_ns ns ([expr {1000.0/$period_ns}] MHz target)"
 
 # ---------- floorplan ----------
-initialize_floorplan -die_area {0 0 1600 1600} -core_area {20 20 1580 1580} -site $SITE
+# Die/core size and placement density are env-overridable so the floorplan can
+# be tightened (shorter wires -> less repair buffering -> higher Fmax + smaller
+# area) without editing this file. Defaults reproduce the original loose 1600um
+# / density-0.6 run exactly.
+set die_um  1600.0
+set dens    0.6
+# Treat an unset OR empty env var as "use default" (ppa.sh may pass empty knobs).
+if { [info exists ::env(PNR_DIE_UM)]  && $::env(PNR_DIE_UM)  ne "" } { set die_um [expr {double($::env(PNR_DIE_UM))}] }
+if { [info exists ::env(PNR_DENSITY)] && $::env(PNR_DENSITY) ne "" } { set dens   [expr {double($::env(PNR_DENSITY))}] }
+set core_lo 20.0
+set core_hi [expr {$die_um - 20.0}]
+puts "INFO: die ${die_um}x${die_um} um, core ${core_lo}..${core_hi}, place density $dens"
+initialize_floorplan -die_area [list 0 0 $die_um $die_um] \
+                     -core_area [list $core_lo $core_lo $core_hi $core_hi] -site $SITE
 make_tracks
 
 # ---------- manual macro placement (shelf packer) ----------
@@ -88,7 +101,7 @@ place_pins -hor_layers metal5 -ver_layers metal6
 source $PLAT/setRC.tcl
 
 # ---------- global placement ----------
-global_placement -density 0.6 -pad_left 1 -pad_right 1
+global_placement -density $dens -pad_left 1 -pad_right 1
 estimate_parasitics -placement
 
 puts "\n===== timing BEFORE repair_design (unbuffered) ====="
@@ -99,6 +112,22 @@ set_dont_use {TAPCELL_X1 FILLCELL_X1 AOI211_X1 OAI211_X1}
 repair_design
 detailed_placement
 estimate_parasitics -placement
+
+# ---------- clock-tree synthesis (env-gated) ----------
+# Off by default (ideal clock = fastest/optimistic). PNR_CTS=1 builds a real
+# clock tree + propagates it so reported setup timing includes skew/insertion
+# delay -- a more honest Fmax. Buffers come from the Nangate45 platform.
+if { [info exists ::env(PNR_CTS)] && $::env(PNR_CTS) == 1 } {
+  puts "INFO: running clock_tree_synthesis (propagated clock)"
+  clock_tree_synthesis -buf_list {CLKBUF_X1 CLKBUF_X2 CLKBUF_X3} \
+                       -root_buf CLKBUF_X3 -sink_clustering_enable
+  set_propagated_clock [all_clocks]
+  detailed_placement
+  estimate_parasitics -placement
+  repair_design
+  detailed_placement
+  estimate_parasitics -placement
+}
 
 # ---------- reports ----------
 puts "\n===== timing AFTER repair_design ====="
@@ -112,7 +141,14 @@ puts "\n===== power ====="
 report_power
 puts "\n===== area ====="
 report_design_area
-write_verilog $DIR/netlist_buffered.v
-write_def $DIR/cpu_placed.def
+# The placed netlist (75MB) + DEF (96MB) are exploration artifacts not consumed
+# by the PPA parse. Skip them by default to save I/O on every sweep; set
+# PNR_WRITE_DEF=1 to emit them (and PNR_OUT to redirect for parallel variants).
+set OUT $DIR
+if { [info exists ::env(PNR_OUT)] && $::env(PNR_OUT) ne "" } { set OUT $::env(PNR_OUT) }
+if { [info exists ::env(PNR_WRITE_DEF)] && $::env(PNR_WRITE_DEF) == 1 } {
+  write_verilog $OUT/netlist_buffered.v
+  write_def     $OUT/cpu_placed.def
+}
 puts "DONE"
 exit
