@@ -81,7 +81,7 @@ import fetch_types::*, cpu_params::*; #(
             c_slot[s] = (ADDR_IDX)'(s);
             c_v   [s] = have_h && (unsigned'(s) >= rd_slot) && head.valid[s];
             c_inst[s] = head.inst[s];
-            c_pc  [s] = head.pc + 32'(unsigned'(s)) * 32'd4;
+            c_pc  [s] = head.pc[s];
             c_ghr [s] = head.ghr;
             c_pt  [s] = head.predict_taken[s];
             c_ptgt[s] = head.predict_target[s];
@@ -91,7 +91,7 @@ import fetch_types::*, cpu_params::*; #(
             c_slot[IF_WIDTH+s] = (ADDR_IDX)'(s);
             c_v   [IF_WIDTH+s] = have_h1 && head1.valid[s];
             c_inst[IF_WIDTH+s] = head1.inst[s];
-            c_pc  [IF_WIDTH+s] = head1.pc + 32'(unsigned'(s)) * 32'd4;
+            c_pc  [IF_WIDTH+s] = head1.pc[s];
             c_ghr [IF_WIDTH+s] = head1.ghr;
             c_pt  [IF_WIDTH+s] = head1.predict_taken[s];
             c_ptgt[IF_WIDTH+s] = head1.predict_target[s];

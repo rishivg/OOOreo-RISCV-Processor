@@ -214,7 +214,7 @@ import cpu_params::*;
         logic   [IF_WIDTH-1:0]  [31:0]  inst;
         logic   [IF_WIDTH-1:0]          predict_taken;
         logic   [IF_WIDTH-1:0]  [31:0]  predict_target;
-        logic                   [31:0]  pc;
+        logic   [IF_WIDTH-1:0]  [31:0]  pc;         // per-slot (variable-length-ready)
         logic   [IF_WIDTH-1:0]          valid;
         logic   [GHR_LEN-1:0]           ghr;        // global history snapshot when predicted
     } fetch_packet_t;
