@@ -60,7 +60,7 @@ import uop_types::*;
 
         assign uops_raw_valid[i] = from_fifo.packet.valid[i];
         assign uops[i].valid = uops_valid[i];
-        assign uops[i].pc = from_fifo.packet.pc + unsigned'(i) * 4;
+        assign uops[i].pc = from_fifo.packet.pc[i];
         assign uops[i].inst = from_fifo.packet.inst[i];
         assign uops[i].rs_type = rs_type[i];
         assign uops[i].fu_type = fu_type[i];
@@ -73,7 +73,7 @@ import uop_types::*;
         assign uops[i].rs2_arch = rs2_arch[i];
         assign uops[i].predict_taken = from_fifo.packet.predict_taken[i];
         assign uops[i].predict_target = from_fifo.packet.predict_target[i];
-        assign uops[i].ghr = from_fifo.packet.ghr;
+        assign uops[i].ghr = from_fifo.packet.ghr[i];
     end endgenerate
 
     //////////////////////////
@@ -98,7 +98,7 @@ import uop_types::*;
             if (rst) begin
                 dispatch_stalled <= 1'b0;
             end else begin
-                if (uops_is_br[0] || (uops_is_mem[0] && uops_is_mem[1])) begin
+                if ((uops_is_br[0] && uops_raw_valid[1]) || (uops_is_mem[0] && uops_is_mem[1])) begin
                     if (dispatch_stalled == 1'b0 && to_fl.ready && to_rob.ready && nxt_ready) begin
                         dispatch_stalled <= 1'b1;
                     end else if (dispatch_stalled == 1'b1 && to_fl.ready && to_rob.ready && nxt_ready) begin
@@ -112,7 +112,7 @@ import uop_types::*;
 
         always_comb begin
             dispatch_mask = 2'b11;
-            if (uops_is_br[0]) begin
+            if (uops_is_br[0] && uops_raw_valid[1]) begin
                 if (dispatch_stalled == 1'b0) begin
                     dispatch_mask = 2'b01;
                 end else begin
@@ -137,7 +137,7 @@ import uop_types::*;
         // Backpressure Ready signal
         always_comb begin
             from_fifo.ready = 1'b0;
-            if (uops_is_br[0] || (uops_is_mem[0] && uops_is_mem[1])) begin
+            if ((uops_is_br[0] && uops_raw_valid[1]) || (uops_is_mem[0] && uops_is_mem[1])) begin
                 from_fifo.ready = dispatch_stalled == 1'b1 && to_fl.ready && to_rob.ready && nxt_ready;
             end else begin
                 from_fifo.ready = to_fl.ready && to_rob.ready && nxt_ready;

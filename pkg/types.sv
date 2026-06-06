@@ -219,6 +219,19 @@ import cpu_params::*;
         logic   [GHR_LEN-1:0]           ghr;        // global history snapshot when predicted
     } fetch_packet_t;
 
+    // Output of the compacting instruction queue: the two slots may come from
+    // different fetch blocks, so pc and ghr are per-slot (not pc+i*4 / one packet
+    // ghr). Slots are program order; a branch, if present, is the youngest valid
+    // slot so the back-end "branch is youngest in its bundle" invariant holds.
+    typedef struct packed {
+        logic   [IF_WIDTH-1:0]  [31:0]          inst;
+        logic   [IF_WIDTH-1:0]                  predict_taken;
+        logic   [IF_WIDTH-1:0]  [31:0]          predict_target;
+        logic   [IF_WIDTH-1:0]  [31:0]          pc;
+        logic   [IF_WIDTH-1:0]                  valid;
+        logic   [IF_WIDTH-1:0]  [GHR_LEN-1:0]   ghr;
+    } decode_packet_t;
+
 endpackage
 
 package uop_types;

@@ -4,7 +4,7 @@ import fetch_types::*;
 
     logic                   valid;
     logic                   ready;
-    fetch_packet_t          packet;
+    decode_packet_t         packet;
 
     modport fifo (
         output              valid,
