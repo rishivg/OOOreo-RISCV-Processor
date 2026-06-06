@@ -205,6 +205,92 @@ import lsu_types::*;
         end
     end
 
+    //////////////////////////////////
+    // Commit / ROB throughput        //
+    //////////////////////////////////
+    logic                       rob_pop, rob_empty, rob_bflush, rob_anyflush, rob_push;
+    logic   [ID_WIDTH-1:0]      rob_commit;
+    logic   [ID_WIDTH-1:0]      rob_push_mask;
+    logic   [ROB_PTR_IDX:0]     rob_head, rob_tail;
+
+    assign rob_pop      = top_tb.dut.backend_i.rob_i.pop;
+    assign rob_empty    = top_tb.dut.backend_i.rob_i.empty;
+    assign rob_bflush   = top_tb.dut.backend_i.rob_i.branch_flush;
+    assign rob_anyflush = top_tb.dut.backend_i.rob_i.backend_flush;
+    assign rob_commit   = top_tb.dut.backend_i.rob_i.commit_instr;
+    assign rob_head     = top_tb.dut.backend_i.rob_i.head_ptr_reg;
+    assign rob_tail     = top_tb.dut.backend_i.rob_i.tail_ptr_reg;
+    // dispatch handshake comes from the id_rob interface instance (Verilator can't
+    // tap through the modport port on rob_i.from_id)
+    logic   rob_push_ready;
+    assign rob_push_ready = top_tb.dut.backend_i.id_rob_itf_i.ready;
+    assign rob_push     = top_tb.dut.backend_i.id_rob_itf_i.valid && rob_push_ready;
+    always_comb begin
+        rob_push_mask = '0;
+        for (int i = 0; i < ID_WIDTH; i++)
+            rob_push_mask[i] = top_tb.dut.backend_i.id_rob_itf_i.inst_valid[i];
+    end
+
+    logic   [31:0]  commit_2_cyc, commit_1_cyc, commit_stall_cyc, rob_empty_cyc;
+    logic   [31:0]  dispatch_2_cyc, dispatch_1_cyc, dispatch_idle_cyc;
+    logic   [31:0]  bflush_cnt, vflush_cnt;
+    logic   [63:0]  wrongpath_rows_sum;     // ROB rows discarded per flush (penalty proxy)
+    logic   [31:0]  refetch_bubble_cyc;     // cycles after a flush with no dispatch (refill)
+    logic           in_refill;
+
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            commit_2_cyc<='0; commit_1_cyc<='0; commit_stall_cyc<='0; rob_empty_cyc<='0;
+            dispatch_2_cyc<='0; dispatch_1_cyc<='0; dispatch_idle_cyc<='0;
+            bflush_cnt<='0; vflush_cnt<='0; wrongpath_rows_sum<='0;
+            refetch_bubble_cyc<='0; in_refill<=1'b0;
+        end else begin
+            // commit width
+            if      ($countones(rob_commit) == 2) commit_2_cyc <= commit_2_cyc + 1;
+            else if ($countones(rob_commit) == 1) commit_1_cyc <= commit_1_cyc + 1;
+            else if (!rob_empty && !rob_anyflush) commit_stall_cyc <= commit_stall_cyc + 1;
+            if (rob_empty) rob_empty_cyc <= rob_empty_cyc + 1;
+            // dispatch (rename->ROB) supply
+            if (rob_push && $countones(rob_push_mask) == 2) dispatch_2_cyc <= dispatch_2_cyc + 1;
+            else if (rob_push)                              dispatch_1_cyc <= dispatch_1_cyc + 1;
+            else if (!rob_push_ready)                       dispatch_idle_cyc <= dispatch_idle_cyc + 1;
+            // flush penalty: rows in flight discarded = tail-head (these were wrong-path)
+            if (rob_anyflush) begin
+                if (rob_bflush) bflush_cnt <= bflush_cnt + 1; else vflush_cnt <= vflush_cnt + 1;
+                wrongpath_rows_sum <= wrongpath_rows_sum + 64'((ROB_PTR_IDX+1)'(rob_tail - rob_head));
+                in_refill <= 1'b1;
+            end else if (rob_push) begin
+                in_refill <= 1'b0;
+            end
+            if (in_refill && !rob_push && !rob_anyflush) refetch_bubble_cyc <= refetch_bubble_cyc + 1;
+        end
+    end
+
+    //////////////////////////////////
+    // Front-end supply              //
+    //////////////////////////////////
+    logic   fe_iq_empty, fe_iq_ready, fe_icache_stall, fe_dispatch_valid;
+    assign fe_iq_empty      = top_tb.dut.inst_queue_i.empty;
+    assign fe_iq_ready      = top_tb.dut.fifo_backend_itf_i.ready;
+    assign fe_icache_stall  = top_tb.dut.frontend_i.if1_stage_i.icache_unresponsive;
+    assign fe_dispatch_valid= top_tb.dut.backend_i.id_rob_itf_i.valid;
+
+    logic [31:0] fe_iq_empty_cyc, fe_iq_starve_cyc, fe_icache_stall_cyc, fe_nodispatch_cyc, fe_icache_miss_cnt;
+    logic        fe_icache_stall_prev;
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            fe_iq_empty_cyc<='0; fe_iq_starve_cyc<='0; fe_icache_stall_cyc<='0; fe_nodispatch_cyc<='0;
+            fe_icache_miss_cnt<='0; fe_icache_stall_prev<='0;
+        end else begin
+            if (fe_iq_empty)                    fe_iq_empty_cyc     <= fe_iq_empty_cyc + 1;
+            if (fe_iq_empty && fe_iq_ready)     fe_iq_starve_cyc    <= fe_iq_starve_cyc + 1; // backend ready, IQ dry
+            if (fe_icache_stall)                fe_icache_stall_cyc <= fe_icache_stall_cyc + 1;
+            fe_icache_stall_prev <= fe_icache_stall;
+            if (fe_icache_stall && ~fe_icache_stall_prev) fe_icache_miss_cnt <= fe_icache_miss_cnt + 1; // rising edge = new miss
+            if (rob_push_ready && !fe_dispatch_valid) fe_nodispatch_cyc <= fe_nodispatch_cyc + 1;
+        end
+    end
+
     logic   [63:0]              cycle_cnt;
     always_ff @(posedge clk) begin
         if (rst) cycle_cnt <= '0;
@@ -240,6 +326,26 @@ import lsu_types::*;
         $display("DCache misses          : %0d", dc_miss_cnt);
         $display("DCache miss-stall cyc  : %0d", dc_miss_stall_cyc);
         $display("Store-buf-full cyc     : %0d", stb_full_cyc);
+        $display("--- Commit / ROB throughput ---");
+        $display("Commit 2/cyc           : %0d", commit_2_cyc);
+        $display("Commit 1/cyc           : %0d", commit_1_cyc);
+        $display("Commit STALL (head blkd): %0d", commit_stall_cyc);
+        $display("ROB empty cyc          : %0d", rob_empty_cyc);
+        $display("--- Dispatch (rename->ROB) supply ---");
+        $display("Dispatch 2/cyc         : %0d", dispatch_2_cyc);
+        $display("Dispatch 1/cyc         : %0d", dispatch_1_cyc);
+        $display("Dispatch idle (RS full): %0d", dispatch_idle_cyc);
+        $display("--- Branch recovery penalty ---");
+        $display("Branch flushes         : %0d", bflush_cnt);
+        $display("Violation flushes      : %0d", vflush_cnt);
+        $display("Wrong-path ROB rows sum: %0d", wrongpath_rows_sum);
+        $display("Refetch bubble cyc     : %0d", refetch_bubble_cyc);
+        $display("--- Front-end supply ---");
+        $display("IQ empty cyc           : %0d", fe_iq_empty_cyc);
+        $display("IQ starve (be-ready)   : %0d", fe_iq_starve_cyc);
+        $display("ICache stall cyc       : %0d", fe_icache_stall_cyc);
+        $display("ICache misses          : %0d", fe_icache_miss_cnt);
+        $display("No-dispatch (be-ready) : %0d", fe_nodispatch_cyc);
         $display("=====================================================");
     end
 
