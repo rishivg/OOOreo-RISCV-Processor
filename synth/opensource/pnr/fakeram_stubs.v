@@ -18,3 +18,12 @@ module fakeram45_32x32(clk, ce_in, we_in, addr_in, wd_in, w_mask_in, rd_out);
   input  [31:0] w_mask_in;
   output [31:0] rd_out;
 endmodule
+
+(* blackbox *)
+module fakeram45_64x32(clk, ce_in, we_in, addr_in, wd_in, w_mask_in, rd_out);
+  input clk, ce_in, we_in;
+  input  [5:0]  addr_in;
+  input  [31:0] wd_in;
+  input  [31:0] w_mask_in;
+  output [31:0] rd_out;
+endmodule

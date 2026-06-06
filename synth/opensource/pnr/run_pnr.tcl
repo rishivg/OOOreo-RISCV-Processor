@@ -17,6 +17,7 @@ set DIR  synth/opensource/pnr
 read_liberty $PLAT/lib/NangateOpenCellLibrary_typical.lib
 read_liberty $PLAT/lib/fakeram45_128x256.lib
 read_liberty $PLAT/lib/fakeram45_32x32.lib
+read_liberty $PLAT/lib/fakeram45_64x32.lib
 read_liberty $DIR/div_fake.lib
 
 # ---------- lef ----------
@@ -24,6 +25,7 @@ read_lef $PLAT/lef/NangateOpenCellLibrary.tech.lef
 read_lef $PLAT/lef/NangateOpenCellLibrary.macro.mod.lef
 read_lef $PLAT/lef/fakeram45_128x256.lef
 read_lef $PLAT/lef/fakeram45_32x32.lef
+read_lef $PLAT/lef/fakeram45_64x32.lef
 read_lef $DIR/div_fake.lef
 
 # ---------- design ----------

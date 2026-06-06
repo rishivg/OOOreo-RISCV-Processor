@@ -25,10 +25,13 @@ module dcache_data_array(vdd, gnd, clk0, csb0, web0, addr0, wmask0, din0, dout0)
     .addr_in({3'b0, addr0}), .wd_in(din0), .w_mask_in(wmask_bit), .rd_out(dout0));
 endmodule
 
-module icache_data_array(vdd, gnd, clk0, csb0, web0, addr0, wmask0, din0, dout0);
+// I-cache is 64 sets (I_SET_IDX=6) -> 6-bit addr; fakeram45_128x256 (128 deep)
+// fits. ADDR_WIDTH param absorbs the icache's #(.ADDR_WIDTH(SET_IDX)) override.
+module icache_data_array #(parameter ADDR_WIDTH = 6)
+  (vdd, gnd, clk0, csb0, web0, addr0, wmask0, din0, dout0);
   inout vdd; inout gnd;
   input clk0, csb0, web0;
-  input  [3:0]   addr0;
+  input  [ADDR_WIDTH-1:0] addr0;
   input  [31:0]  wmask0;
   input  [255:0] din0;
   output [255:0] dout0;
@@ -37,9 +40,9 @@ module icache_data_array(vdd, gnd, clk0, csb0, web0, addr0, wmask0, din0, dout0)
   generate for (i = 0; i < 256; i = i + 1) begin : g_wmask
     assign wmask_bit[i] = wmask0[i/8];
   end endgenerate
-  fakeram45_128x256 u_ram (
+  fakeram45_128x256 u_ram (              // 128 deep -> addr_in[6:0], zero-extend
     .clk(clk0), .ce_in(csb0), .we_in(web0),
-    .addr_in({3'b0, addr0}), .wd_in(din0), .w_mask_in(wmask_bit), .rd_out(dout0));
+    .addr_in(7'(addr0)), .wd_in(din0), .w_mask_in(wmask_bit), .rd_out(dout0));
 endmodule
 
 module dcache_tag_array(vdd, gnd, clk0, csb0, web0, addr0, din0, dout0);
@@ -55,15 +58,17 @@ module dcache_tag_array(vdd, gnd, clk0, csb0, web0, addr0, din0, dout0);
     .addr_in({1'b0, addr0}), .wd_in({8'b0, din0}), .w_mask_in(32'hFFFFFFFF), .rd_out(rd));
 endmodule
 
-module icache_tag_array(vdd, gnd, clk0, csb0, web0, addr0, din0, dout0);
+// I-cache tag array is 64 sets -> 64-deep fakeram45_64x32 (was 32x32 at 16 sets).
+module icache_tag_array #(parameter ADDR_WIDTH = 6)
+  (vdd, gnd, clk0, csb0, web0, addr0, din0, dout0);
   inout vdd; inout gnd;
   input clk0, csb0, web0;
-  input  [3:0]  addr0;
+  input  [ADDR_WIDTH-1:0] addr0;
   input  [23:0] din0;
   output [23:0] dout0;
   wire [31:0] rd;
   assign dout0 = rd[23:0];
-  fakeram45_32x32 u_ram (
+  fakeram45_64x32 u_ram (                // 64 deep -> addr_in[5:0]
     .clk(clk0), .ce_in(csb0), .we_in(web0),
-    .addr_in({1'b0, addr0}), .wd_in({8'b0, din0}), .w_mask_in(32'hFFFFFFFF), .rd_out(rd));
+    .addr_in(6'(addr0)), .wd_in({8'b0, din0}), .w_mask_in(32'hFFFFFFFF), .rd_out(rd));
 endmodule
