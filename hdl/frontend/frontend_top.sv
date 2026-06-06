@@ -153,7 +153,7 @@ import cpu_params::*;
         assign to_fifo.packet.predict_taken[i] = predict_taken[i];
         assign to_fifo.packet.predict_target[i] = predict_target[i];
         // per-slot PC. RV32IM: slot i is at blk_pc + i*4. The C-extension fetch
-        // realignment will instead drive each slot's true (2-byte-granular) PC.
+        // realignment will instead drive each slot's true (halfword-granular) PC.
         assign to_fifo.packet.pc[i] = blk_pc + 32'(unsigned'(i)) * 32'd4;
     end endgenerate
     assign to_fifo.packet.ghr = ghr_snapshot;
