@@ -215,15 +215,19 @@ import cpu_params::*;
 
     //---------------------------------------------------------------------------
     // State update
+    //
+    // Split into two clock domains so the large tagged-table / bimodal arrays
+    // can be clock-gated: they are written only at commit (from_cb.update_en) or
+    // during reset, a minority of cycles, whereas the small global-history state
+    // (ghr_spec/ghr_commit/use_alt_on_na) updates every cycle and stays ungated.
     //---------------------------------------------------------------------------
+
+    // Ungated: per-cycle global-history + policy-counter state.
     always_ff @(posedge clk) begin
         if (rst) begin
             ghr_spec   <= '0;
             ghr_commit <= '0;
             use_alt_on_na <= 4'd8;
-            for (int i = 0; i < PHT_DEPTH; i++) bimodal[i] <= 2'b01;
-            for (int t = 0; t < TAGE_NUM; t++)
-                for (int j = 0; j < TAGE_DEPTH; j++) tt[t][j] <= '0;
         end else begin
             ghr_commit <= ghr_commit_next;
             if (flush)                ghr_spec <= ghr_commit_next;
@@ -236,33 +240,49 @@ import cpu_params::*;
                     if (u_alt_pred == u_taken) use_alt_on_na <= (use_alt_on_na == 4'hF) ? use_alt_on_na : use_alt_on_na + 4'd1;
                     else                       use_alt_on_na <= (use_alt_on_na == 4'h0) ? use_alt_on_na : use_alt_on_na - 4'd1;
                 end
+            end
+        end
+    end
 
-                // base predictor learns only for branches with no tagged provider
-                if (!u_provider_valid) begin
-                    if (u_taken) bimodal[from_cb.pc[PHT_IDX+1:2]] <= (bimodal[from_cb.pc[PHT_IDX+1:2]] == 2'b11) ? 2'b11 : bimodal[from_cb.pc[PHT_IDX+1:2]] + 2'b01;
-                    else         bimodal[from_cb.pc[PHT_IDX+1:2]] <= (bimodal[from_cb.pc[PHT_IDX+1:2]] == 2'b00) ? 2'b00 : bimodal[from_cb.pc[PHT_IDX+1:2]] - 2'b01;
-                end
+    // Gated: the bimodal + tagged tables only ever change on a reset init or a
+    // commit train (from_cb.update_en). en is exactly that union -> a superset.
+    logic tage_wr_en;
+    logic tage_gclk;
+    assign tage_wr_en = rst || from_cb.update_en;
+    clock_gate tage_cg (.clk(clk), .en(tage_wr_en), .gclk(tage_gclk));
 
-                // per-table writes (each table written at most once per commit)
-                for (int t = 0; t < TAGE_NUM; t++) begin
-                    if (u_provider_valid && (($clog2(TAGE_NUM))'(t) == u_provider)) begin
-                        // strengthen/weaken provider; bump usefulness if it beat the alt
-                        tt[t][u_idx[t]].ctr <= ctr_upd(u_ent[t].ctr, u_taken);
-                        if (u_prov_pred != u_alt_pred) begin
-                            if (u_prov_pred == u_taken)
-                                tt[t][u_idx[t]].u <= (u_ent[t].u == '1) ? u_ent[t].u : u_ent[t].u + 1'b1;
-                            else
-                                tt[t][u_idx[t]].u <= (u_ent[t].u == '0) ? u_ent[t].u : u_ent[t].u - 1'b1;
-                        end
-                    end else if (mispredict && alloc_valid && (($clog2(TAGE_NUM))'(t) == alloc_table)) begin
-                        // allocate a new entry in a longer component
-                        tt[t][u_idx[t]].tag <= tag_comb(from_cb.pc, ftag_c[t]);
-                        tt[t][u_idx[t]].ctr <= u_taken ? 3'sb000 : 3'sb111;   // weakly toward outcome
-                        tt[t][u_idx[t]].u   <= '0;
-                    end else if (mispredict && !alloc_valid && (unsigned'(t) >= alloc_start)) begin
-                        // no free entry: age the candidates so one frees up later
-                        tt[t][u_idx[t]].u <= (u_ent[t].u == '0) ? u_ent[t].u : u_ent[t].u - 1'b1;
+    always_ff @(posedge tage_gclk) begin
+        if (rst) begin
+            for (int i = 0; i < PHT_DEPTH; i++) bimodal[i] <= 2'b01;
+            for (int t = 0; t < TAGE_NUM; t++)
+                for (int j = 0; j < TAGE_DEPTH; j++) tt[t][j] <= '0;
+        end else begin
+            // from_cb.update_en is guaranteed asserted here (gate enable).
+            // base predictor learns only for branches with no tagged provider
+            if (!u_provider_valid) begin
+                if (u_taken) bimodal[from_cb.pc[PHT_IDX+1:2]] <= (bimodal[from_cb.pc[PHT_IDX+1:2]] == 2'b11) ? 2'b11 : bimodal[from_cb.pc[PHT_IDX+1:2]] + 2'b01;
+                else         bimodal[from_cb.pc[PHT_IDX+1:2]] <= (bimodal[from_cb.pc[PHT_IDX+1:2]] == 2'b00) ? 2'b00 : bimodal[from_cb.pc[PHT_IDX+1:2]] - 2'b01;
+            end
+
+            // per-table writes (each table written at most once per commit)
+            for (int t = 0; t < TAGE_NUM; t++) begin
+                if (u_provider_valid && (($clog2(TAGE_NUM))'(t) == u_provider)) begin
+                    // strengthen/weaken provider; bump usefulness if it beat the alt
+                    tt[t][u_idx[t]].ctr <= ctr_upd(u_ent[t].ctr, u_taken);
+                    if (u_prov_pred != u_alt_pred) begin
+                        if (u_prov_pred == u_taken)
+                            tt[t][u_idx[t]].u <= (u_ent[t].u == '1) ? u_ent[t].u : u_ent[t].u + 1'b1;
+                        else
+                            tt[t][u_idx[t]].u <= (u_ent[t].u == '0) ? u_ent[t].u : u_ent[t].u - 1'b1;
                     end
+                end else if (mispredict && alloc_valid && (($clog2(TAGE_NUM))'(t) == alloc_table)) begin
+                    // allocate a new entry in a longer component
+                    tt[t][u_idx[t]].tag <= tag_comb(from_cb.pc, ftag_c[t]);
+                    tt[t][u_idx[t]].ctr <= u_taken ? 3'sb000 : 3'sb111;   // weakly toward outcome
+                    tt[t][u_idx[t]].u   <= '0;
+                end else if (mispredict && !alloc_valid && (unsigned'(t) >= alloc_start)) begin
+                    // no free entry: age the candidates so one frees up later
+                    tt[t][u_idx[t]].u <= (u_ent[t].u == '0) ? u_ent[t].u : u_ent[t].u - 1'b1;
                 end
             end
         end

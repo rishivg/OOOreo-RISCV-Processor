@@ -32,7 +32,14 @@ import uop_types::*;
     logic [UBTB_IDX-1:0]    br_insert_idx;
     logic [UBTB_IDX-1:0]    br_ubtb_head;
 
-    always_ff @(posedge clk) begin
+    // Clock-gate the branch uBTB: written only on a committed taken conditional
+    // branch (or reset), idle on the vast majority of cycles.
+    logic br_ubtb_wr_en;
+    logic br_ubtb_gclk;
+    assign br_ubtb_wr_en = rst || (from_cb.update_en && from_cb.branch_taken && ~from_cb.fu_opcode[3]);
+    clock_gate br_ubtb_cg (.clk(clk), .en(br_ubtb_wr_en), .gclk(br_ubtb_gclk));
+
+    always_ff @(posedge br_ubtb_gclk) begin
         if (rst) begin
             br_ubtb_head <= '0;
             for (int i = 0; i < UBTB_DEPTH; i++) begin
@@ -84,7 +91,13 @@ import uop_types::*;
     logic [UBTB_IDX-1:0]    j_insert_idx;
     logic [UBTB_IDX-1:0]    j_ubtb_head;
 
-    always_ff @(posedge clk) begin
+    // Clock-gate the jump uBTB: written only on a committed taken jump (or reset).
+    logic j_ubtb_wr_en;
+    logic j_ubtb_gclk;
+    assign j_ubtb_wr_en = rst || (from_cb.update_en && from_cb.branch_taken && from_cb.fu_opcode[3]);
+    clock_gate j_ubtb_cg (.clk(clk), .en(j_ubtb_wr_en), .gclk(j_ubtb_gclk));
+
+    always_ff @(posedge j_ubtb_gclk) begin
         if (rst) begin
             j_ubtb_head  <= '0;
             for (int i = 0; i < UBTB_DEPTH; i++) begin

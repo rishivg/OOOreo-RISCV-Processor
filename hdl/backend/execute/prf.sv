@@ -33,9 +33,23 @@ import int_rs_types::*;
         end
     endgenerate
 
-    always_ff @(posedge clk) begin
+    // Clock-gate the register-file array: written only when a CDB lane carries a
+    // result for a non-zero physical register. en = OR of every write port's
+    // enable (exact superset). The latch-based clock_gate stays transparent even
+    // though these CDB valids are combinational on the load-to-use pass-through.
+    logic prf_wr_en;
+    logic prf_gclk;
+    always_comb begin
+        prf_wr_en = 1'b0;
+        for (int i = 0; i < CDB_WIDTH; i++)
+            if (cdb_local[i].valid && (cdb_local[i].rd_phy != '0))
+                prf_wr_en = 1'b1;
+    end
+    clock_gate prf_cg (.clk(clk), .en(prf_wr_en), .gclk(prf_gclk));
+
+    always_ff @(posedge prf_gclk) begin
         for (int i = 0; i < CDB_WIDTH; i++) begin
-            if (cdb_local[i].valid && (cdb_local[i].rd_phy != '0)) begin 
+            if (cdb_local[i].valid && (cdb_local[i].rd_phy != '0)) begin
                 prf_data[cdb_local[i].rd_phy] <= cdb_local[i].rd_value;
             end
         end
