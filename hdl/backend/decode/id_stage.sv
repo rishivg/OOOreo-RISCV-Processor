@@ -90,6 +90,13 @@ import uop_types::*;
 
         always_comb begin
             for (int i = 0; i < ID_WIDTH; i++) begin
+                // A branch in slot 0 may now co-dispatch a *younger* slot-1 op
+                // (the row no longer must end at a branch). Two cases still split
+                // across rows: br+br (the control buffer dequeues one branch per
+                // committed row) and br+mem (a store younger than a slot-0 branch
+                // would commit to memory via the STQ path before the branch's
+                // mispredict squash could stop it). br+alu / br+intm are fine --
+                // they only ever commit a register, which commit_instr gates.
                 uops_is_br[i] = (rs_type[i] == RS_BR) && uops_raw_valid[i] && from_fifo.valid;
                 uops_is_mem[i] = (rs_type[i] == RS_MEM) && uops_raw_valid[i] && from_fifo.valid;
             end
@@ -99,7 +106,7 @@ import uop_types::*;
             if (rst) begin
                 dispatch_stalled <= 1'b0;
             end else begin
-                if ((uops_is_br[0] && uops_raw_valid[1]) || (uops_is_mem[0] && uops_is_mem[1])) begin
+                if ((uops_is_br[0] && (uops_is_br[1] || uops_is_mem[1])) || (uops_is_mem[0] && uops_is_mem[1])) begin
                     if (dispatch_stalled == 1'b0 && to_fl.ready && to_rob.ready && nxt_ready) begin
                         dispatch_stalled <= 1'b1;
                     end else if (dispatch_stalled == 1'b1 && to_fl.ready && to_rob.ready && nxt_ready) begin
@@ -113,7 +120,7 @@ import uop_types::*;
 
         always_comb begin
             dispatch_mask = 2'b11;
-            if (uops_is_br[0] && uops_raw_valid[1]) begin
+            if (uops_is_br[0] && (uops_is_br[1] || uops_is_mem[1])) begin
                 if (dispatch_stalled == 1'b0) begin
                     dispatch_mask = 2'b01;
                 end else begin
@@ -138,7 +145,7 @@ import uop_types::*;
         // Backpressure Ready signal
         always_comb begin
             from_fifo.ready = 1'b0;
-            if ((uops_is_br[0] && uops_raw_valid[1]) || (uops_is_mem[0] && uops_is_mem[1])) begin
+            if ((uops_is_br[0] && (uops_is_br[1] || uops_is_mem[1])) || (uops_is_mem[0] && uops_is_mem[1])) begin
                 from_fifo.ready = dispatch_stalled == 1'b1 && to_fl.ready && to_rob.ready && nxt_ready;
             end else begin
                 from_fifo.ready = to_fl.ready && to_rob.ready && nxt_ready;

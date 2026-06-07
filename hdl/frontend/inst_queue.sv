@@ -140,16 +140,26 @@ import fetch_types::*, cpu_params::*; #(
         n_avail = (IF_WIDTH+1)'(k);
     end
 
-    // ---- build the output bundle: stop after a branch so it is the youngest ----
+    // ---- build the output bundle: at most ONE branch per bundle ----
+    // A branch no longer has to be the youngest in the bundle: a predicted-not-
+    // taken branch can co-dispatch its sequential successor (predicted-taken
+    // branches already had their successors invalidated at fetch, so [br,nonbr]
+    // only forms on the predicted path). Recovery is slot-granular (rob.sv) so a
+    // younger same-row instr is squashed on a mispredict. We still cap at one
+    // branch per bundle -- the control buffer dequeues one branch per row.
     logic   [IF_WIDTH-1:0]      bundle_valid;
     logic   [$clog2(IF_WIDTH+1)-1:0] bundle_count;
     always_comb begin
+        automatic logic br_seen = 1'b0;
         bundle_valid = '0;
         for (int i = 0; i < IF_WIDTH; i++) begin
-            // slot i is valid if available AND no earlier slot in the bundle was a branch
             if (unsigned'(i) < n_avail) begin
-                if (i == 0)                 bundle_valid[i] = 1'b1;
-                else if (!s_br[i-1] && bundle_valid[i-1]) bundle_valid[i] = 1'b1;
+                if (i == 0) begin
+                    bundle_valid[i] = 1'b1;
+                end else if (bundle_valid[i-1] && !(s_br[i] && br_seen)) begin
+                    bundle_valid[i] = 1'b1;           // include unless it'd be a 2nd branch
+                end
+                if (bundle_valid[i] && s_br[i]) br_seen = 1'b1;
             end
         end
         bundle_count = '0;

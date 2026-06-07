@@ -144,6 +144,8 @@ import rvfi_types::*;
     // takes priority over a branch-mispredict redirect.
     logic                       viol_flush;
     logic   [ID_WIDTH_IDX-1:0]  viol_slot;
+    logic                       branch_flush;
+    logic   [ID_WIDTH_IDX-1:0]  br_slot;        // slot of the mispredicting branch in the head row
     always_comb begin
         viol_flush = 1'b0;
         viol_slot  = '0;
@@ -155,10 +157,19 @@ import rvfi_types::*;
         end
     end
 
+    assign br_slot = (ID_WIDTH_IDX)'(from_cb.rob_id % ID_WIDTH);
+
+    // Slot-granular commit. A violated load squashes itself and every younger
+    // slot (>= viol_slot). A mispredicting branch commits itself but squashes
+    // every YOUNGER slot (> br_slot) in its row -- this is what lets a branch
+    // sit in slot 0 with a younger slot-1 instruction (the backend full-flush
+    // wipes that instruction's speculative rename/RS/ROB/LSQ state; we only
+    // gate its architectural commit here).
     always_comb begin
         for (int i = 0; i < ID_WIDTH; i++) begin
             commit_instr[i] = pop && rob_arr[head_ptr][i].valid
-                              && !(viol_flush && (ID_WIDTH_IDX)'(i) >= viol_slot);
+                              && !(viol_flush   && (ID_WIDTH_IDX)'(i) >= viol_slot)
+                              && !(branch_flush && (ID_WIDTH_IDX)'(i) >  br_slot);
         end
     end
 
@@ -175,8 +186,7 @@ import rvfi_types::*;
         assign to_rrf.rd_arch[i] = rob_arr[head_ptr][i].rd_arch;
     end endgenerate
 
-    // interface with control_buffer
-    logic       branch_flush;
+    // interface with control_buffer (branch_flush declared with the commit logic above)
     assign dequeue = from_cb.ready ? pop && ((ROB_PTR_IDX)'(from_cb.rob_id / ID_WIDTH) == head_ptr) : 1'b0;
     assign from_cb.dequeue = dequeue;
     assign branch_flush = dequeue && from_cb.miss_predict;
