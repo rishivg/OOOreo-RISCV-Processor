@@ -25,31 +25,35 @@ import icache_types::*, cpu_params::*; #(
 
     logic                   data_csb0[NUM_WAYS];
     logic                   tag_csb0[NUM_WAYS];
-    logic                   valid_csb0[NUM_WAYS];
     logic                   plru_csb0;
     logic                   plru_csb1;
 
     logic                   data_web0[NUM_WAYS];
     logic                   tag_web0[NUM_WAYS];
-    logic                   valid_web0[NUM_WAYS];
     logic                   plru_web1;
 
     logic   [31:0]          data_wmask0;
     logic   [255:0]         data_din0;
+    // Tag-array word is {epoch, tag}. Line-validity rode in a separate valid_array
+    // (flops + a 64:1 read mux) which synthesis could not fold into the SRAM macro
+    // -> it was THE I-cache Fmax wall. Validity now lives in the tag SRAM's MSB as
+    // a GENERATION (epoch) bit: a line is valid iff line_epoch == global_epoch.
+    // Reset just flips global_epoch (one flop), invalidating every line at once --
+    // no multi-cycle sweep and no fetch hold-off (which had desynced fetch vs the
+    // free-running front-end PC/predictor and thrashed the cache).
     logic   [TAG_IDX:0]     tag_din0;
-    logic                   valid_din0;
-    logic   [PLRU_BITS-1:0] plru_din1;
+    logic                   global_epoch;
 
     logic   [255:0]         data_dout0[NUM_WAYS];
     logic   [TAG_IDX:0]     tag_dout0[NUM_WAYS];
     logic                   valid_dout0[NUM_WAYS];
     logic   [PLRU_BITS-1:0] plru_dout0;
+    logic   [PLRU_BITS-1:0] plru_din1;
 
     logic   [OFFSET_IDX-1:0] ufp_offset;
     logic   [SET_IDX-1:0]   ufp_set;
     logic   [TAG_IDX-1:0]   ufp_tag;
 
-    logic   [SET_IDX-1:0]   next_set;
     logic   [SET_IDX-1:0]   sram_operating_set;
 
     icache_stage_reg_t       stage_reg;
@@ -60,6 +64,11 @@ import icache_types::*, cpu_params::*; #(
 
     logic                   stall;
     logic                   allocate_done;
+
+    // Global generation counter: flip on reset to invalidate all lines at once.
+    always_ff @(posedge clk) begin
+        if (rst) global_epoch <= ~global_epoch;
+    end
 
     assign ufp_offset = ufp_addr[OFFSET_IDX-1:0];
     assign ufp_set = ufp_addr[SET_IDX+OFFSET_IDX-1:OFFSET_IDX];
@@ -89,18 +98,8 @@ import icache_types::*, cpu_params::*; #(
             .din0       (tag_din0),
             .dout0      (tag_dout0[i])
         );
-        valid_array #(
-            .S_INDEX (SET_IDX),
-            .WIDTH   (1)
-        ) valid_array (
-            .clk0       (clk),
-            .rst0       (rst),
-            .csb0       (valid_csb0[i]),
-            .web0       (valid_web0[i]),
-            .addr0      (sram_operating_set),
-            .din0       (valid_din0),
-            .dout0      (valid_dout0[i])
-        );
+        // A line is valid iff its stored epoch matches the current generation.
+        assign valid_dout0[i] = (tag_dout0[i][TAG_IDX] == global_epoch);
     end endgenerate
 
     lru_array #(
@@ -140,21 +139,18 @@ import icache_types::*, cpu_params::*; #(
         for (int i = 0; i < NUM_WAYS; i++) begin
             data_csb0[i] = 1'b1;
             tag_csb0[i] = 1'b1;
-            valid_csb0[i] = 1'b1;
         end
 
         if (~stall || kill) begin
             for (int i = 0; i < NUM_WAYS; i++) begin
                 data_csb0[i] = 1'b0;
                 tag_csb0[i] = 1'b0;
-                valid_csb0[i] = 1'b0;
             end
         end
 
         if (allocate_done) begin
             data_csb0[replace_way] = 1'b0;
             tag_csb0[replace_way] = 1'b0;
-            valid_csb0[replace_way] = 1'b0;
         end
     end
 
@@ -166,13 +162,11 @@ import icache_types::*, cpu_params::*; #(
         for (int i = 0; i < NUM_WAYS; i++) begin
             data_web0[i] = 1'b1;
             tag_web0[i] = 1'b1;
-            valid_web0[i] = 1'b1;
         end
 
         if (allocate_done) begin
             data_web0[replace_way] = 1'b0;
             tag_web0[replace_way] = 1'b0;
-            valid_web0[replace_way] = 1'b0;
         end
     end
 
@@ -190,8 +184,8 @@ import icache_types::*, cpu_params::*; #(
         end
     end
 
-    assign tag_din0 = {1'b0, stage_reg.tag};
-    assign valid_din0 = 1'b1;
+    // Refill stamps the line with the current generation so it reads back valid.
+    assign tag_din0 = {global_epoch, stage_reg.tag};
 
     // ========================================================================
     // PROCESS stage
