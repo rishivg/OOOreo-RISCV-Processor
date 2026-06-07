@@ -154,17 +154,6 @@ import uop_types::*;
 
     end endgenerate
 
-    generate if (ID_WIDTH == 1) begin : filter_1way
-        logic   garbage_clk;
-        logic   garbage_rst;
-        
-        assign garbage_clk = clk;
-        assign garbage_rst = rst;
-
-        assign uops_valid[0] = uops_raw_valid[0];
-        assign from_fifo.ready = to_fl.ready && to_rob.ready && nxt_ready;
-    end endgenerate
-
     //////////////////////////
     //     Rename Stage     //
     //////////////////////////

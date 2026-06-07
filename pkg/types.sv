@@ -39,8 +39,7 @@ package cpu_params;
     localparam unsigned     MAX_ISSUE_WIDTH = 2;
 
     // Bypass Network
-    localparam  unsigned    NUM_RS          = 4; // Number of RS
-    localparam  unsigned    CDB_WIDTH       = 5; // Number of CDB, could be different from NUM_RS
+    localparam  unsigned    CDB_WIDTH       = 5; // Number of CDB
     localparam  unsigned    NUM_FAST_BYPASS = 2;
 
     // Bimodal base predictor table (also the TAGE base)
@@ -152,60 +151,6 @@ package rv32i_types;
         muldiv         = 7'b0000001,
         variant        = 7'b0100000
     } funct7_t;
-
-    typedef union packed {
-        logic [31:0] word;
-
-        struct packed {
-            logic [11:0] i_imm;
-            logic [4:0]  rs1;
-            logic [2:0]  funct3;
-            logic [4:0]  rd;
-            rv32i_opcode opcode;
-        } i_type;
-
-        struct packed {
-            logic [6:0]  funct7;
-            logic [4:0]  rs2;
-            logic [4:0]  rs1;
-            logic [2:0]  funct3;
-            logic [4:0]  rd;
-            rv32i_opcode opcode;
-        } r_type;
-
-        struct packed {
-            logic [11:5] imm_s_top;
-            logic [4:0]  rs2;
-            logic [4:0]  rs1;
-            logic [2:0]  funct3;
-            logic [4:0]  imm_s_bot;
-            rv32i_opcode opcode;
-        } s_type;
-
-        struct packed {
-            logic [12:12] b_imm_top_1;
-            logic [10:5] b_imm_top_2;
-            logic [4:0] rs2;
-            logic [4:0] rs1;
-            logic [2:0] funct3;
-            logic [4:1] b_imm_bot_1;
-            logic [11:11] b_imm_bot_2;
-            rv32i_opcode opcode;
-        } b_type;
-
-        struct packed {
-            logic [31:12] imm;
-            logic [4:0]   rd;
-            rv32i_opcode  opcode;
-        } j_type;
-
-        struct packed {
-            logic [31:12] imm;
-            logic [4:0]   rd;
-            rv32i_opcode  opcode;
-        } u_type;
-
-    } instr_t;
 
 endpackage
 
@@ -569,20 +514,6 @@ import cpu_params::*;
 
     typedef struct packed {
         logic   [ROB_IDX-1:0]   rob_id;
-        logic                   ready;
-        logic                   is_store;
-        logic   [3:0]           fu_opcode;
-        logic   [31:0]          addr;
-        logic   [3:0]           mask;
-        logic   [31:0]          wdata;
-        logic   [ARF_IDX-1:0]   rd_arch;
-        logic   [PRF_IDX-1:0]   rd_phy;
-        logic   [31:0]          rs1_value_dbg;
-        logic   [31:0]          rs2_value_dbg;
-    } lsq_entry_t;
-
-    typedef struct packed {
-        logic   [ROB_IDX-1:0]   rob_id;
         logic                   addr_valid;
         logic   [31:0]          addr;
         logic   [3:0]           mask;
@@ -628,14 +559,6 @@ import cpu_params::*;
         logic   [31:0]          forward_wdata;  // forwarded store word (already aligned)
     } load_stage_reg_t;
 
-    typedef struct packed {
-        logic   [ROB_IDX-1:0]   rob_id;
-        logic   [ARF_IDX-1:0]   rd_arch;
-        logic   [PRF_IDX-1:0]   rd_phy;
-        logic   [31:0]          rd_value;
-        logic   [31:0]          rs1_value_dbg;
-        logic   [31:0]          rs2_value_dbg;
-    } lsu_cdb_reg_t;
 
 endpackage
 
