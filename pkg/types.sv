@@ -59,7 +59,7 @@ package cpu_params;
     // TAGE Parameters (global history shared with the bimodal base above)
     localparam  unsigned    GHR_LEN         = 64;   // global history register width carried per branch
     localparam  unsigned    TAGE_NUM        = 4;    // number of tagged components
-    localparam  unsigned    TAGE_DEPTH      = 1024; // entries per tagged component
+    localparam  unsigned    TAGE_DEPTH      = 256; // entries per tagged component
     localparam  unsigned    TAGE_IDX        = $clog2(TAGE_DEPTH);
     localparam  unsigned    TAGE_TAG_BITS   = 9;
     localparam  unsigned    TAGE_CTR_BITS   = 3;    // signed saturating counter

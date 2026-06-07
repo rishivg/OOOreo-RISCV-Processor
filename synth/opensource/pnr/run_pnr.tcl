@@ -29,7 +29,11 @@ read_lef $PLAT/lef/fakeram45_64x32.lef
 read_lef $DIR/div_fake.lef
 
 # ---------- design ----------
-read_verilog $DIR/netlist_pnr.v
+# PNR_NETLIST overrides the netlist path so an alternate (e.g. baseline) netlist
+# can be floorplanned for calibration without overwriting netlist_pnr.v.
+set NETLIST $DIR/netlist_pnr.v
+if { [info exists ::env(PNR_NETLIST)] && $::env(PNR_NETLIST) ne "" } { set NETLIST $::env(PNR_NETLIST) }
+read_verilog $NETLIST
 link_design cpu
 
 # ---------- constraints ----------
@@ -44,10 +48,12 @@ puts "INFO: clock period = $period_ns ns ([expr {1000.0/$period_ns}] MHz target)
 # ---------- floorplan ----------
 # Die/core size and placement density are env-overridable so the floorplan can
 # be tightened (shorter wires -> less repair buffering -> higher Fmax + smaller
-# area) without editing this file. Defaults reproduce the original loose 1600um
-# / density-0.6 run exactly.
-set die_um  1600.0
-set dens    0.6
+# area) without editing this file. Default die retuned 1600->1300 / density
+# 0.6->0.72 after TAGE_DEPTH 1024->256 shrank the design ~31% (1600um left it at
+# 34% util -> sparse placement inflated wire delay; 1300um restores ~55% util,
+# matching the density the pre-shrink baseline ran at).
+set die_um  1300.0
+set dens    0.72
 # Treat an unset OR empty env var as "use default" (ppa.sh may pass empty knobs).
 if { [info exists ::env(PNR_DIE_UM)]  && $::env(PNR_DIE_UM)  ne "" } { set die_um [expr {double($::env(PNR_DIE_UM))}] }
 if { [info exists ::env(PNR_DENSITY)] && $::env(PNR_DENSITY) ne "" } { set dens   [expr {double($::env(PNR_DENSITY))}] }

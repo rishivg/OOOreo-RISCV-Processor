@@ -1,42 +1,83 @@
 {
-  "coremark_im": {
-    "program": "coremark_im",
-    "ipc": 1.224545,
+  "coremark_imc": {
+    "program": "coremark_imc",
+    "ipc": 1.265613,
     "ipc_kind": "segment",
-    "segment_cycles": 238099,
-    "run_cycles": 250376,
+    "segment_cycles": 230373,
+    "run_cycles": 243728,
     "clock_period_ps": 2780,
     "branch": {
-      "total": 62353,
-      "total_mispredict": 1857,
-      "total_rate_pct": 2.98,
-      "cond_total": 56690,
-      "cond_mispredict": 1766,
-      "cond_rate_pct": 3.12,
-      "uncond_total": 5663,
-      "uncond_mispredict": 91,
-      "uncond_rate_pct": 1.61
+      "total": 62031,
+      "total_mispredict": 2455,
+      "total_rate_pct": 3.96,
+      "cond_total": 56380,
+      "cond_mispredict": 2141,
+      "cond_rate_pct": 3.8,
+      "uncond_total": 5651,
+      "uncond_mispredict": 314,
+      "uncond_rate_pct": 5.56
     },
     "dispatch_stall": {
-      "int": 9979,
-      "intm": 114,
-      "br": 270,
-      "mem": 1336
+      "int": 3153,
+      "intm": 44,
+      "br": 326,
+      "mem": 747
     },
     "lsu": {
-      "loads": 56674,
-      "disambig_block": 6307,
+      "loads": 57272,
+      "disambig_block": 4340,
+      "viol": 113,
+      "viol_flush": 108
+    },
+    "muldiv": {
+      "mul": 9525,
+      "div": 0
+    },
+    "dcache": {
+      "misses": 394,
+      "miss_stall_cyc": 2832,
+      "stb_full_cyc": 1872
+    },
+    "rvfi_errors": 0
+  },
+  "coremark_im": {
+    "program": "coremark_im",
+    "ipc": 1.412673,
+    "ipc_kind": "segment",
+    "segment_cycles": 206391,
+    "run_cycles": 217982,
+    "clock_period_ps": 2780,
+    "branch": {
+      "total": 63093,
+      "total_mispredict": 2015,
+      "total_rate_pct": 3.19,
+      "cond_total": 57334,
+      "cond_mispredict": 1925,
+      "cond_rate_pct": 3.36,
+      "uncond_total": 5759,
+      "uncond_mispredict": 90,
+      "uncond_rate_pct": 1.56
+    },
+    "dispatch_stall": {
+      "int": 9952,
+      "intm": 114,
+      "br": 558,
+      "mem": 1295
+    },
+    "lsu": {
+      "loads": 57234,
+      "disambig_block": 7090,
       "viol": 111,
       "viol_flush": 107
     },
     "muldiv": {
-      "mul": 9585,
+      "mul": 9658,
       "div": 0
     },
     "dcache": {
-      "misses": 310,
-      "miss_stall_cyc": 2804,
-      "stb_full_cyc": 1914
+      "misses": 340,
+      "miss_stall_cyc": 2834,
+      "stb_full_cyc": 1927
     },
     "rvfi_errors": 0
   }
