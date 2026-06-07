@@ -13,7 +13,7 @@
 SHELL := /bin/bash
 SV2V  ?= sv2v
 PKG   := ../pkg/types.sv
-ITF   := ../hdl/common/interfaces/backend_itf.sv
+ITF   := ../hdl/common/interfaces/rename_itf.sv
 
 .PHONY: all fifo free_list riscv-formal clean
 all: fifo free_list
