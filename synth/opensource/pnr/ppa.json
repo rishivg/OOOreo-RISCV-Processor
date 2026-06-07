@@ -1,12 +1,12 @@
 {
   "clk_period_ns": 2.78,
-  "wns_ns": -12.52,
-  "tns_ns": -77841.79,
+  "wns_ns": -11.04,
+  "tns_ns": -80061.55,
   "met_timing": false,
-  "achievable_period_ns": 15.299999999999999,
-  "fmax_mhz": 65.35947712418302,
-  "power_total_w": 0.814,
-  "area_um2": 866983,
-  "utilization_pct": 55,
-  "note": "TAGE_DEPTH 1024->256. INTENDED/ROBUST deltas vs pre-shrink baseline (1.254M um2 / 1.07W / 77.4MHz): area -31%, power -24%, IPC-parity (coremark_im 1.4156->1.4127). Fmax 77.4->65.4MHz is NOT a logic regression -- TAGE is not on the critical path; the worst path is still the I-cache valid/tag high-fanout net, whose repair_design buffering varies +-~15% with macro/cell placement in this post-GP, no-CTS, estimated-parasitics flow. Die retuned 1600->1300 to restore ~55% util for the now-smaller design (1600 left it at 34% -> even lower Fmax). PD4 here is Fmax-dominated (no area term) so it reads worse but does not reflect a real efficiency loss; the structural I-cache fix (epoch/generation valid bit) is the real Fmax lever. post-global-placement, repair_design buffered, ideal clock (no CTS); estimated parasitics; default switching activity; oversized fakeram macros."
+  "achievable_period_ns": 13.819999999999999,
+  "fmax_mhz": 72.35890014471781,
+  "power_total_w": 0.671,
+  "area_um2": 863529,
+  "utilization_pct": 54,
+  "note": "TAGE256 + slot-granular recovery + I-cache epoch valid bit (valid folded into tag SRAM). vs TAGE256-only @die1300 (65.36MHz/0.814W/PD4 8.09e-11): Fmax 65.36->72.36 (+10.7%), power 0.814->0.671 (-17.6%), PD4(im) 8.09e-11->4.36e-11 (-46%). The I-cache Fmax WALL IS BROKEN: the worst path moved off the synthesized valid flop-array (icache valid_array) onto tag_array/u_ram (the SRAM macro itself) -- a structural change beyond placement noise. die 1300 / density 0.72. post-global-placement, repair_design buffered, ideal clock (no CTS); estimated parasitics; default switching activity; oversized fakeram macros."
 }
