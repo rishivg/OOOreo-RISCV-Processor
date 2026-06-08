@@ -67,13 +67,26 @@ import cpu_params::*;
     // Combine the PC with a pre-computed history fold. The fold (an XOR tree
     // over the global history) depends only on (history, length), not the PC or
     // fetch slot, so it is computed once per component below and shared.
+    // pc[1] (the RVC halfword bit) is XORed into the index/tag LSB so a compressed
+    // branch and its halfword neighbour in the same word no longer alias to one
+    // entry. For RV32I pc[1]==0 always -> the fold is a no-op (im stays identical).
     function automatic logic [TAGE_IDX-1:0] idx_comb(input logic [31:0] pc, input logic [TAGE_IDX-1:0] fidx);
-        idx_comb = pc[TAGE_IDX+1:2] ^ fidx;
+        idx_comb = {pc[TAGE_IDX+1:3], pc[2] ^ pc[1]} ^ fidx;
     endfunction
 
     function automatic logic [TAGE_TAG_BITS-1:0] tag_comb(input logic [31:0] pc, input logic [TAGE_TAG_BITS-1:0] ftag);
-        tag_comb = pc[TAGE_TAG_BITS+1:2] ^ ftag ^ pc[2*TAGE_TAG_BITS+1:TAGE_TAG_BITS+2];
+        tag_comb = {pc[TAGE_TAG_BITS+1:3], pc[2] ^ pc[1]} ^ ftag ^ pc[2*TAGE_TAG_BITS+1:TAGE_TAG_BITS+2];
     endfunction
+
+    // Bimodal base index, with the same RVC de-alias fold.
+    function automatic logic [PHT_IDX-1:0] bidx(input logic [31:0] pc);
+        bidx = {pc[PHT_IDX+1:3], pc[2] ^ pc[1]};
+    endfunction
+
+    // Commit-side bimodal index, precomputed into a signal: a function call in the
+    // index of a non-blocking-assigned array element trips Verilator V3Delayed.
+    logic [PHT_IDX-1:0] bim_widx;
+    assign bim_widx = bidx(from_cb.pc);
 
     // Per-component history folds, computed once each: from the speculative
     // history for prediction (shared by both fetch slots) and from the carried
@@ -116,7 +129,7 @@ import cpu_params::*;
             automatic int   prov_t;
             automatic logic alt_p;
             pc_in[i] = inst_pc[i];
-            base_pred[i] = bimodal[pc_in[i][PHT_IDX+1:2]] >= 2'b10;
+            base_pred[i] = bimodal[bidx(pc_in[i])] >= 2'b10;
             for (int t = 0; t < TAGE_NUM; t++) begin
                 p_ent[i][t] = tt[t][idx_comb(pc_in[i], fidx_s[t])];
                 p_hit[i][t] = (p_ent[i][t].tag == tag_comb(pc_in[i], ftag_s[t]));
@@ -168,7 +181,7 @@ import cpu_params::*;
 
     always_comb begin
         u_taken     = from_cb.branch_taken;
-        base_pred_c = bimodal[from_cb.pc[PHT_IDX+1:2]] >= 2'b10;
+        base_pred_c = bimodal[bim_widx] >= 2'b10;
 
         for (int t = 0; t < TAGE_NUM; t++) begin
             u_idx[t] = idx_comb(from_cb.pc, fidx_c[t]);
@@ -260,8 +273,8 @@ import cpu_params::*;
             // from_cb.update_en is guaranteed asserted here (gate enable).
             // base predictor learns only for branches with no tagged provider
             if (!u_provider_valid) begin
-                if (u_taken) bimodal[from_cb.pc[PHT_IDX+1:2]] <= (bimodal[from_cb.pc[PHT_IDX+1:2]] == 2'b11) ? 2'b11 : bimodal[from_cb.pc[PHT_IDX+1:2]] + 2'b01;
-                else         bimodal[from_cb.pc[PHT_IDX+1:2]] <= (bimodal[from_cb.pc[PHT_IDX+1:2]] == 2'b00) ? 2'b00 : bimodal[from_cb.pc[PHT_IDX+1:2]] - 2'b01;
+                if (u_taken) bimodal[bim_widx] <= (bimodal[bim_widx] == 2'b11) ? 2'b11 : bimodal[bim_widx] + 2'b01;
+                else         bimodal[bim_widx] <= (bimodal[bim_widx] == 2'b00) ? 2'b00 : bimodal[bim_widx] - 2'b01;
             end
 
             // per-table writes (each table written at most once per commit)

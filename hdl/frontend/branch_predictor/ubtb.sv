@@ -27,6 +27,13 @@ import uop_types::*;
         OVERWRITE       = 3'b100
     } ubtb_update_t;
 
+    // uBTB tag with the RVC de-alias fold: pc[1] (halfword bit) XORed into the LSB
+    // so a compressed branch and its neighbour in the same word get distinct tags.
+    // For RV32I pc[1]==0 always -> identical to the old pc[..:2] tag (im unchanged).
+    function automatic logic [UBTB_TAG_IDX-1:0] btag(input logic [31:0] pc);
+        btag = {pc[UBTB_TAG_IDX+1:3], pc[2] ^ pc[1]};
+    endfunction
+
     ubtb_entry_t            br_ubtb    [UBTB_DEPTH];
     ubtb_update_t           br_ubtb_update;
     logic [UBTB_IDX-1:0]    br_update_idx;
@@ -50,15 +57,15 @@ import uop_types::*;
             unique case (br_ubtb_update)
                 INSERT: begin
                     br_ubtb[br_insert_idx].valid    <= '1;
-                    br_ubtb[br_insert_idx].tag      <= from_cb.pc[UBTB_TAG_IDX+1:2];
+                    br_ubtb[br_insert_idx].tag      <= btag(from_cb.pc);
                     br_ubtb[br_insert_idx].target   <= from_cb.target_address;
                 end
                 UPDATE: begin
-                    br_ubtb[br_update_idx].tag      <= from_cb.pc[UBTB_TAG_IDX+1:2];
+                    br_ubtb[br_update_idx].tag      <= btag(from_cb.pc);
                     br_ubtb[br_update_idx].target   <= from_cb.target_address;
                 end
                 OVERWRITE: begin
-                    br_ubtb[br_ubtb_head].tag       <= from_cb.pc[UBTB_TAG_IDX+1:2];
+                    br_ubtb[br_ubtb_head].tag       <= btag(from_cb.pc);
                     br_ubtb[br_ubtb_head].target    <= from_cb.target_address;
                     br_ubtb_head <= br_ubtb_head + 1'b1;
                 end
@@ -78,7 +85,7 @@ import uop_types::*;
                 if (!br_ubtb[i].valid) begin
                     br_ubtb_update = INSERT;
                     br_insert_idx = (UBTB_IDX)'(i);
-                end else if (br_ubtb[i].tag == from_cb.pc[UBTB_TAG_IDX+1:2]) begin
+                end else if (br_ubtb[i].tag == btag(from_cb.pc)) begin
                     br_ubtb_update = UPDATE;
                     br_update_idx = (UBTB_IDX)'(i);
                 end
@@ -108,15 +115,15 @@ import uop_types::*;
             unique case (j_ubtb_update)
                 INSERT: begin
                     j_ubtb[j_insert_idx].valid    <= '1;
-                    j_ubtb[j_insert_idx].tag      <= from_cb.pc[UBTB_TAG_IDX+1:2];
+                    j_ubtb[j_insert_idx].tag      <= btag(from_cb.pc);
                     j_ubtb[j_insert_idx].target   <= from_cb.target_address;
                 end
                 UPDATE: begin
-                    j_ubtb[j_update_idx].tag      <= from_cb.pc[UBTB_TAG_IDX+1:2];
+                    j_ubtb[j_update_idx].tag      <= btag(from_cb.pc);
                     j_ubtb[j_update_idx].target   <= from_cb.target_address;
                 end
                 OVERWRITE: begin
-                    j_ubtb[j_ubtb_head].tag       <= from_cb.pc[UBTB_TAG_IDX+1:2];
+                    j_ubtb[j_ubtb_head].tag       <= btag(from_cb.pc);
                     j_ubtb[j_ubtb_head].target    <= from_cb.target_address;
                     j_ubtb_head <= j_ubtb_head + 1'b1;
                 end
@@ -136,7 +143,7 @@ import uop_types::*;
                 if (!j_ubtb[i].valid) begin
                     j_ubtb_update = INSERT;
                     j_insert_idx = (UBTB_IDX)'(i);
-                end else if(j_ubtb[i].tag == from_cb.pc[UBTB_TAG_IDX+1:2]) begin
+                end else if(j_ubtb[i].tag == btag(from_cb.pc)) begin
                     j_ubtb_update = UPDATE;
                     j_update_idx = (UBTB_IDX)'(i);
                 end
@@ -151,13 +158,13 @@ import uop_types::*;
             pc_in[w] = inst_pc[w];
             predict_target[w] = seq_next[w];
             for (int i = 0; i < UBTB_DEPTH; i++) begin
-                if (predict_taken_gshare[w] && br_ubtb[i].valid && (br_ubtb[i].tag == pc_in[w][UBTB_TAG_IDX+1:2])) begin
+                if (predict_taken_gshare[w] && br_ubtb[i].valid && (br_ubtb[i].tag == btag(pc_in[w]))) begin
                     predict_target[w] = br_ubtb[i].target;
 		            predict_taken[w]  = 1'b1;
                     break;
                 end
                 // prioritize jump over branch
-                if (j_ubtb[i].valid && (j_ubtb[i].tag == pc_in[w][UBTB_TAG_IDX+1:2])) begin
+                if (j_ubtb[i].valid && (j_ubtb[i].tag == btag(pc_in[w]))) begin
                     predict_target[w] = j_ubtb[i].target;
 		            predict_taken[w] = 1'b1;
                     break;
