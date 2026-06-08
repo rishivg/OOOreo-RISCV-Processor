@@ -1,12 +1,12 @@
 {
   "clk_period_ns": 2.78,
-  "wns_ns": -11.04,
-  "tns_ns": -80061.55,
+  "wns_ns": -10.5,
+  "tns_ns": -59046.89,
   "met_timing": false,
-  "achievable_period_ns": 13.819999999999999,
-  "fmax_mhz": 72.35890014471781,
-  "power_total_w": 0.671,
-  "area_um2": 863529,
+  "achievable_period_ns": 13.28,
+  "fmax_mhz": 75.30120481927712,
+  "power_total_w": 0.66,
+  "area_um2": 861916,
   "utilization_pct": 54,
-  "note": "TAGE256 + slot-granular recovery + I-cache epoch valid bit (valid folded into tag SRAM). vs TAGE256-only @die1300 (65.36MHz/0.814W/PD4 8.09e-11): Fmax 65.36->72.36 (+10.7%), power 0.814->0.671 (-17.6%), PD4(im) 8.09e-11->4.36e-11 (-46%). The I-cache Fmax WALL IS BROKEN: the worst path moved off the synthesized valid flop-array (icache valid_array) onto tag_array/u_ram (the SRAM macro itself) -- a structural change beyond placement noise. die 1300 / density 0.72. post-global-placement, repair_design buffered, ideal clock (no CTS); estimated parasitics; default switching activity; oversized fakeram macros."
+  "note": "post-global-placement, repair_design buffered, ideal clock (no CTS); estimated parasitics; default switching activity; oversized fakeram macros."
 }
