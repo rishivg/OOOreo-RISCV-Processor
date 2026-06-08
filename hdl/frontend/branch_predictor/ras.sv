@@ -90,31 +90,47 @@ import cpu_params::*;
         if (from_cb.update_en && from_cb.is_call) tos_commit_next = tos_commit + 1'b1;
     end
 
+    // Top-of-stack pointers move on most return/call cycles, so they stay on the
+    // ungated clock (they are tiny).
     always_ff @(posedge clk) begin
         if (rst) begin
             tos_spec   <= '0;
             tos_commit <= '0;
         end else begin
-            // Commit stack updates (immune to the wrong path).
             tos_commit <= tos_commit_next;
-            if (from_cb.update_en && from_cb.is_call) begin
-                ras_commit_mem[tos_commit_next] <= commit_ret_addr;
-            end
+            if (flush)           tos_spec <= tos_commit_next;
+            else if (fetch_fire) tos_spec <= tos_next;
+        end
+    end
 
-            // Spec stack: resync from the committed stack on flush (folding in
-            // this cycle's committed push), otherwise follow the fetch stream.
-            if (flush) begin
-                tos_spec <= tos_commit_next;
-                for (int i = 0; i < RAS_DEPTH; i++) begin
-                    ras_spec_mem[i] <= (from_cb.update_en && from_cb.is_call
-                                        && (unsigned'(i) == tos_commit_next))
-                                       ? commit_ret_addr : ras_commit_mem[i];
-                end
-            end else if (fetch_fire) begin
-                tos_spec <= tos_next;
-                for (int i = 0; i < IF_WIDTH; i++) begin
-                    if (push_en[i]) ras_spec_mem[push_idx[i]] <= push_val[i];
-                end
+    // The RAS_DEPTH x 32-bit spec/commit memories change only on a committed call
+    // (commit stack push), a flush resync, or a fetched call (spec push) -- idle on
+    // the common pop / sequential-fetch cycles. Clock-gate them on exactly that
+    // union (a superset of every write below), mirroring the TAGE/uBTB gating.
+    logic ras_wr_en;
+    logic ras_gclk;
+    assign ras_wr_en = (from_cb.update_en && from_cb.is_call)
+                     || flush
+                     || (fetch_fire && (|push_en));
+    clock_gate ras_cg (.clk(clk), .en(ras_wr_en), .gclk(ras_gclk));
+
+    always_ff @(posedge ras_gclk) begin
+        // Committed stack updates (immune to the wrong path).
+        if (from_cb.update_en && from_cb.is_call) begin
+            ras_commit_mem[tos_commit_next] <= commit_ret_addr;
+        end
+
+        // Spec stack: resync from the committed stack on flush (folding in this
+        // cycle's committed push), otherwise follow the fetch stream.
+        if (flush) begin
+            for (int i = 0; i < RAS_DEPTH; i++) begin
+                ras_spec_mem[i] <= (from_cb.update_en && from_cb.is_call
+                                    && (unsigned'(i) == tos_commit_next))
+                                   ? commit_ret_addr : ras_commit_mem[i];
+            end
+        end else if (fetch_fire) begin
+            for (int i = 0; i < IF_WIDTH; i++) begin
+                if (push_en[i]) ras_spec_mem[push_idx[i]] <= push_val[i];
             end
         end
     end
