@@ -51,6 +51,13 @@ package cpu_params;
     localparam  unsigned    UBTB_IDX        = $clog2(UBTB_DEPTH);
     localparam  unsigned    UBTB_TAG_IDX    = 20; // need at most 30 bits for matching
 
+    // Fetch Target Buffer (decoupled front-end): block-PC-indexed predictor of a
+    // fetch block's exit branch (offset/target/type), so the BPU can find the next
+    // block without the fetched instructions. Direct-mapped, trained at commit.
+    localparam  unsigned    FTB_DEPTH       = 64;
+    localparam  unsigned    FTB_IDX         = $clog2(FTB_DEPTH);
+    localparam  unsigned    FTB_TAG_BITS    = 12;
+
     // Return Address Stack Parameters
     localparam  unsigned    RAS_DEPTH       = 16;
     localparam  unsigned    RAS_IDX         = $clog2(RAS_DEPTH);
