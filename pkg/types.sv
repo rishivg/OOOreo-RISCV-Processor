@@ -42,8 +42,11 @@ package cpu_params;
     localparam  unsigned    CDB_WIDTH       = 5; // Number of CDB
     localparam  unsigned    NUM_FAST_BYPASS = 2;
 
-    // Bimodal base predictor table (also the TAGE base)
-    localparam  unsigned    PHT_DEPTH       = 4096;
+    // Bimodal base predictor table (also the TAGE base). 1024 entries: the base
+    // only predicts branches with no tagged provider, and CoreMark's static-branch
+    // footprint is far below this -> 4096->1024 reclaims 3/4 of the base flop array
+    // (was bigger than all 4 tagged tables combined) at IPC-parity.
+    localparam  unsigned    PHT_DEPTH       = 1024;
     localparam  unsigned    PHT_IDX         = $clog2(PHT_DEPTH);
 
     // uBTB Parameters
