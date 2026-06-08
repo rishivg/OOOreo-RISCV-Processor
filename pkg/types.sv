@@ -183,6 +183,20 @@ import cpu_params::*;
         logic   [IF_WIDTH-1:0]  [GHR_LEN-1:0]   ghr;
     } decode_packet_t;
 
+    // Fetch Target Queue entry (decoupled front-end). The BPU predicts one of
+    // these per cycle from the block-START pc alone and pushes it; the IFU pops
+    // it to drive the I-cache, so fetch-address generation is no longer gated by
+    // the I-cache's own hit/stall (the Fmax worst-path). A block runs from
+    // start_pc until next_pc; taken marks that it ends at a predicted-taken
+    // branch (vs sequential fall-through). ghr is the history snapshot used to
+    // train the predictor when the block's branch resolves at commit.
+    typedef struct packed {
+        logic   [31:0]              start_pc;   // I-cache fetch address for the block
+        logic   [31:0]              next_pc;    // predicted next-block pc (taken target or fall-through)
+        logic                       taken;      // block ends at a predicted-taken control transfer
+        logic   [GHR_LEN-1:0]       ghr;        // history snapshot when predicted
+    } ftq_entry_t;
+
 endpackage
 
 package uop_types;
