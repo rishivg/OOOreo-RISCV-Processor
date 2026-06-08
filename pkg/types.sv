@@ -56,7 +56,7 @@ package cpu_params;
     // block without the fetched instructions. Direct-mapped, trained at commit.
     localparam  unsigned    FTB_DEPTH       = 64;
     localparam  unsigned    FTB_IDX         = $clog2(FTB_DEPTH);
-    localparam  unsigned    FTB_TAG_BITS    = 12;
+    localparam  unsigned    FTB_TAG_BITS    = 20;   // wide tag -> fully-associative (no index conflicts)
 
     // Return Address Stack Parameters
     localparam  unsigned    RAS_DEPTH       = 16;
