@@ -54,7 +54,28 @@ import int_rs_types::*; #(
         end
     end
 
-    always_ff @(posedge clk) begin
+    // Clock-gate the (wide) entry data flop. It is otherwise free-running -- it
+    // reloads every cycle and only its feedback mux holds the value -- so it
+    // toggles its clock even when the slot is idle. It only ever CHANGES on a push
+    // or a CDB wakeup matching one of its sources, so that union (a superset) is the
+    // gate enable. Transparent latch ICG => bit-identical to the free-running flop.
+    logic entry_wakeup;
+    always_comb begin
+        entry_wakeup = 1'b0;
+        for (int k = 0; k < CDB_WIDTH; k++) begin
+            if (cdb_rs[k].valid
+                && ((entry_reg.rs1_phy == cdb_rs[k].rd_phy)
+                 || (entry_reg.rs2_phy == cdb_rs[k].rd_phy))) begin
+                entry_wakeup = 1'b1;
+            end
+        end
+    end
+    logic entry_reg_en;
+    logic entry_gclk;
+    assign entry_reg_en = rst || push_en || entry_wakeup;
+    clock_gate entry_cg (.clk(clk), .en(entry_reg_en), .gclk(entry_gclk));
+
+    always_ff @(posedge entry_gclk) begin
         entry_reg <= next_entry;
     end
 
