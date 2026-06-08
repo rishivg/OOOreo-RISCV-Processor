@@ -54,8 +54,6 @@ import icache_types::*, cpu_params::*; #(
     logic   [SET_IDX-1:0]   ufp_set;
     logic   [TAG_IDX-1:0]   ufp_tag;
 
-    logic   [SET_IDX-1:0]   sram_operating_set;
-
     icache_stage_reg_t       stage_reg;
 
     logic                   hit;
@@ -74,9 +72,15 @@ import icache_types::*, cpu_params::*; #(
     assign ufp_set = ufp_addr[SET_IDX+OFFSET_IDX-1:OFFSET_IDX];
     assign ufp_tag = ufp_addr[TAG_IDX+SET_IDX+OFFSET_IDX-1:SET_IDX+OFFSET_IDX];
 
-    assign sram_operating_set = (~stall || kill) ? ufp_set : stage_reg.set_i;
-
     generate for (genvar i = 0; i < NUM_WAYS; i++) begin : arrays
+        // Per-way copy of the SRAM address. One net feeding all 8 macros (4 ways x
+        // data+tag) was the high-fanout source behind the worst-path repeater tree;
+        // splitting it into a driver per way (each feeding just its data+tag, which
+        // sit adjacent after clustering) shrinks the fanout 4x. The keep attribute
+        // stops CSE from merging the copies. Logically == sram_operating_set, the
+        // addressed line is bit-identical.
+        (* keep *) logic [SET_IDX-1:0] set_w;
+        assign set_w = (~stall || kill) ? ufp_set : stage_reg.set_i;
         icache_data_array #(
             .ADDR_WIDTH (SET_IDX)
         ) data_array (
@@ -84,7 +88,7 @@ import icache_types::*, cpu_params::*; #(
             .csb0       (data_csb0[i]),
             .web0       (data_web0[i]),
             .wmask0     (data_wmask0),
-            .addr0      (sram_operating_set),
+            .addr0      (set_w),
             .din0       (data_din0),
             .dout0      (data_dout0[i])
         );
@@ -94,7 +98,7 @@ import icache_types::*, cpu_params::*; #(
             .clk0       (clk),
             .csb0       (tag_csb0[i]),
             .web0       (tag_web0[i]),
-            .addr0      (sram_operating_set),
+            .addr0      (set_w),
             .din0       (tag_din0),
             .dout0      (tag_dout0[i])
         );

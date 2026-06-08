@@ -64,41 +64,54 @@ initialize_floorplan -die_area [list 0 0 $die_um $die_um] \
                      -core_area [list $core_lo $core_lo $core_hi $core_hi] -site $SITE
 make_tracks
 
-# ---------- manual macro placement (shelf packer) ----------
-# Pack all BLOCK macros into a strip on the left of the core; stdcells fill the
-# rest. Deterministic + non-overlapping; not connectivity-optimal but valid.
+# ---------- manual macro placement (per-cache clustering) ----------
+# Cluster each cache's macros into its own compact block instead of packing all 17
+# macros into one shared strip by area. The earlier area-packer scattered the 8
+# I-cache macros across a ~565x460um region interleaved with the D-cache, so the
+# fetch-address net (one driver -> all 8 I-cache macros) ran half a millimeter and
+# the worst path was an 11ns repeater chain (80% of the 13.76ns critical path was
+# long-wire buffering, only ~2.5ns was logic). Clustering keeps that net short;
+# global_placement then pulls each cache's logic adjacent to its own cluster.
+# Sorting insts by name groups a cache's ways (data+tag adjacent) contiguously.
 set block [ord::get_db_block]
 set dbu [$block getDbUnitsPerMicron]
 proc um {block v} { return [expr {round($v * [$block getDbUnitsPerMicron])}] }
 
-set macros {}
+# classify BLOCK macros by hierarchy, name-sorted so ways pack data-then-tag
+set ic {} ; set dc {} ; set ot {}
+set pairs {}
 foreach inst [$block getInsts] {
-  if { [[$inst getMaster] getType] == "BLOCK" } { lappend macros $inst }
+  if { [[$inst getMaster] getType] == "BLOCK" } { lappend pairs [list [$inst getName] $inst] }
 }
-puts "INFO: [llength $macros] macros to place"
+foreach p [lsort -index 0 $pairs] {
+  set inst [lindex $p 1]; set nm [lindex $p 0]
+  if { [string match *icache* $nm] }      { lappend ic $inst
+  } elseif { [string match *dcache* $nm] } { lappend dc $inst
+  } else                                   { lappend ot $inst }
+}
+puts "INFO: macros -> icache [llength $ic], dcache [llength $dc], other [llength $ot]"
 
-set gap     [um $block 10.0]
-set x0       [um $block 30.0]
-set y0       [um $block 30.0]
-set strip_w [um $block 690.0] ;# region width for macros
-set cx $x0
-set cy $y0
-set shelf_h 0
-foreach inst $macros {
-  set m [$inst getMaster]
-  set w [$m getWidth]; set h [$m getHeight]
-  if { $cx + $w > $x0 + $strip_w } {           ;# wrap to next shelf
-    set cx $x0
-    set cy [expr {$cy + $shelf_h + $gap}]
-    set shelf_h 0
+# shelf-pack one group into a region whose lower-left is (x0,y0), width strip_w
+proc pack_group {block dbu macros x0 y0 strip_w gap} {
+  set cx $x0 ; set cy $y0 ; set shelf_h 0
+  foreach inst $macros {
+    set m [$inst getMaster]
+    set w [$m getWidth] ; set h [$m getHeight]
+    if { $cx + $w > $x0 + $strip_w } { set cx $x0 ; set cy [expr {$cy + $shelf_h + $gap}] ; set shelf_h 0 }
+    place_macro -macro_name [$inst getName] \
+      -location [list [expr {$cx/double($dbu)}] [expr {$cy/double($dbu)}]] -orientation R0
+    $inst setPlacementStatus FIRM
+    set cx [expr {$cx + $w + $gap}]
+    if { $h > $shelf_h } { set shelf_h $h }
   }
-  place_macro -macro_name [$inst getName] \
-    -location [list [expr {$cx/double($dbu)}] [expr {$cy/double($dbu)}]] -orientation R0
-  $inst setPlacementStatus FIRM ;# keep global placement from moving it
-  set cx [expr {$cx + $w + $gap}]
-  if { $h > $shelf_h } { set shelf_h $h }
 }
-puts "INFO: macros placed; top shelf reaches y=[expr {($cy+$shelf_h)/double($dbu)}] um"
+
+set gap [um $block 8.0]
+set sw  [um $block 400.0]    ;# ~2 data macros wide -> each cache packs 2 ways/shelf
+pack_group $block $dbu $ic [um $block 30.0]  [um $block 30.0]  $sw $gap   ;# I-cache: lower-left
+pack_group $block $dbu $dc [um $block 470.0] [um $block 30.0]  $sw $gap   ;# D-cache: to its right
+pack_group $block $dbu $ot [um $block 30.0]  [um $block 560.0] $sw $gap   ;# divider etc.
+puts "INFO: macros placed (clustered per cache)"
 
 # ---------- IO pins ----------
 place_pins -hor_layers metal5 -ver_layers metal6
