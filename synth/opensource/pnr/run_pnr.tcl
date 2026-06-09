@@ -51,8 +51,10 @@ puts "INFO: clock period = $period_ns ns ([expr {1000.0/$period_ns}] MHz target)
 # area) without editing this file. Default die retuned 1600->1300 / density
 # 0.6->0.72 after TAGE_DEPTH 1024->256 shrank the design ~31% (1600um left it at
 # 34% util -> sparse placement inflated wire delay; 1300um restores ~55% util,
-# matching the density the pre-shrink baseline ran at).
-set die_um  1300.0
+# matching the density the pre-shrink baseline ran at). Retuned 1300->1250 after
+# the PHT 4096->1024 shrink cut another ~7.7% area (1300um dropped util to 50%;
+# 1250um restores ~54%, matching the baseline util for an apples-to-apples Fmax).
+set die_um  1250.0
 set dens    0.72
 # Treat an unset OR empty env var as "use default" (ppa.sh may pass empty knobs).
 if { [info exists ::env(PNR_DIE_UM)]  && $::env(PNR_DIE_UM)  ne "" } { set die_um [expr {double($::env(PNR_DIE_UM))}] }

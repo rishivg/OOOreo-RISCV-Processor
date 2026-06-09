@@ -1,12 +1,12 @@
 {
   "clk_period_ns": 2.78,
-  "wns_ns": -10.5,
-  "tns_ns": -59046.89,
+  "wns_ns": -10.94,
+  "tns_ns": -56114.5,
   "met_timing": false,
-  "achievable_period_ns": 13.28,
-  "fmax_mhz": 75.30120481927712,
-  "power_total_w": 0.66,
-  "area_um2": 861916,
+  "achievable_period_ns": 13.719999999999999,
+  "fmax_mhz": 72.8862973760933,
+  "power_total_w": 0.76,
+  "area_um2": 795970,
   "utilization_pct": 54,
   "note": "post-global-placement, repair_design buffered, ideal clock (no CTS); estimated parasitics; default switching activity; oversized fakeram macros."
 }
