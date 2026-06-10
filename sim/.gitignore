@@ -9,3 +9,5 @@ run_output.txt
 compile_output.log
 time.txt
 *.dis
+
+verilator_spinal/

@@ -34,16 +34,22 @@ Requirements per swappable module:
 
 ## Phases
 
-### Phase 0 — Toolchain spine  *(in progress)*
+### Phase 0 — Toolchain spine  *(mostly done)*
 - [x] sbt project, `CpuConfig` (ported params), `Cpu` stub emitting `module cpu`.
-- [ ] **clk/rst naming**: SpinalHDL emits `clk`/`reset`; the harness wants
-  `clk`/`rst`. Resolve (rename at generation, or a 6-line Verilog wrapper).
-- [ ] **sim integration**: a `sim` target that builds `gen/cpu.v` + the existing
-  HVL + SRAM + `DW_div_seq` + RVFI monitor, plus a **module-swap knob**
-  (`SPINAL_MODULES="decoder fu_alu ..."` substitutes those generated `.v` for
-  the SV `.sv`). Gate: stub core elaborates + links in Verilator.
+- [x] **clk/rst naming**: explicit clk/rst IO + a `ClockingArea` (active-high sync
+  reset) -> `gen/cpu.v` ports are exactly `clk, rst, bmem_*` (verified).
+- [x] **sim integration**: `sim/build_spinal.sh` generates `gen/cpu.v` and
+  Verilator-builds it against the real memory model + SRAM blackboxes + HVL
+  harness, using the minimal `hvl/verilator_spinal/top_tb_spinal.sv` (drops the
+  SV-hierarchy-coupled `perf_monitor` + rvfi `monitor` taps). GATE MET: builds,
+  links, and simulates (stub -> expected TIMEOUT, no crash). `DW_div_seq` is the
+  local `hvl/common/dw_mock.sv`, no external IP.
+- [ ] **module-swap knob**: extend the script to substitute selected generated
+  `.v` for their SV `.sv` (do when the first leaf module lands, Phase 2).
 - [ ] **golden-vector capture**: dump per-module I/O traces from the SV core for
-  the pure modules, to unit-test the SpinalHDL twins in SpinalSim.
+  the pure modules (do alongside the first leaf-module port, Phase 2).
+- [ ] **rvfi/perf rebinding**: regenerate the rvfi tap file against the SpinalHDL
+  ROB hierarchy (name-preserved) + rewrite perf_monitor taps (Phase 3, needs ROB).
 
 ### Phase 1 — Foundations: types + interfaces
 - [ ] Port `pkg/types.sv` structs to SpinalHDL `Bundle`s: `uop`, `fetch_packet`,
