@@ -1,6 +1,6 @@
 package cpu_params;
 
-    localparam  unsigned    IF_WIDTH    = 2;
+    localparam  unsigned    IF_WIDTH    = 4;
     // Width of a parcel count in [0 .. 2*IF_WIDTH] (C-extension fetch realignment).
     localparam  unsigned    PARCEL_CNT_W = $clog2(2*IF_WIDTH + 1);
 
@@ -182,15 +182,19 @@ import cpu_params::*;
     // different fetch blocks, so pc and ghr are per-slot (not pc+i*4 / one packet
     // ghr). Slots are program order; a branch, if present, is the youngest valid
     // slot so the back-end "branch is youngest in its bundle" invariant holds.
+    // Sized by ID_WIDTH (the back-end issue width), NOT IF_WIDTH: the compacting
+    // inst_queue streams up to ID_WIDTH instrs/cycle, draining an IF_WIDTH-wide
+    // fetch packet over multiple cycles when IF_WIDTH > ID_WIDTH (fetch-wider-
+    // than-issue). For IF_WIDTH == ID_WIDTH this is identical to before.
     typedef struct packed {
-        logic   [IF_WIDTH-1:0]  [31:0]          inst;
-        logic   [IF_WIDTH-1:0]  [31:0]          inst_raw;       // original encoding (RVFI)
-        logic   [IF_WIDTH-1:0]                  is_compressed;  // RVC: slot was 16-bit
-        logic   [IF_WIDTH-1:0]                  predict_taken;
-        logic   [IF_WIDTH-1:0]  [31:0]          predict_target;
-        logic   [IF_WIDTH-1:0]  [31:0]          pc;
-        logic   [IF_WIDTH-1:0]                  valid;
-        logic   [IF_WIDTH-1:0]  [GHR_LEN-1:0]   ghr;
+        logic   [ID_WIDTH-1:0]  [31:0]          inst;
+        logic   [ID_WIDTH-1:0]  [31:0]          inst_raw;       // original encoding (RVFI)
+        logic   [ID_WIDTH-1:0]                  is_compressed;  // RVC: slot was 16-bit
+        logic   [ID_WIDTH-1:0]                  predict_taken;
+        logic   [ID_WIDTH-1:0]  [31:0]          predict_target;
+        logic   [ID_WIDTH-1:0]  [31:0]          pc;
+        logic   [ID_WIDTH-1:0]                  valid;
+        logic   [ID_WIDTH-1:0]  [GHR_LEN-1:0]   ghr;
     } decode_packet_t;
 
     // Fetch Target Queue entry (decoupled front-end). The BPU predicts one of

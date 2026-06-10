@@ -105,26 +105,32 @@ import fetch_types::*, cpu_params::*; #(
         end
     end
 
-    // ---- compact the valid candidates into an ordered stream ----
-    logic   [31:0]              s_inst[IF_WIDTH];
-    logic   [31:0]              s_raw [IF_WIDTH];
-    logic                       s_comp[IF_WIDTH];
-    logic   [31:0]              s_pc  [IF_WIDTH];
-    logic   [GHR_LEN-1:0]       s_ghr [IF_WIDTH];
-    logic                       s_pt  [IF_WIDTH];
-    logic   [31:0]              s_ptgt[IF_WIDTH];
-    logic                       s_br  [IF_WIDTH];
-    logic   [$clog2(NC)-1:0]    s_src [IF_WIDTH];   // which candidate filled this stream slot
-    logic   [IF_WIDTH:0]        n_avail;            // how many valid instrs available (0..IF_WIDTH)
+    // ---- compact the valid candidates into an ordered stream (up to ID_WIDTH) ----
+    // The back-end consumes ID_WIDTH instrs/cycle, while a fetch packet is IF_WIDTH
+    // wide (IF_WIDTH >= ID_WIDTH). We stream the first <=ID_WIDTH valid candidates
+    // (head slots from rd_slot, then head+1 slots); a packet wider than ID_WIDTH is
+    // drained over multiple cycles via rd_slot. OW == IF_WIDTH degenerates to the
+    // original single-cycle-per-packet behaviour.
+    localparam int OW = ID_WIDTH;
+    logic   [31:0]              s_inst[OW];
+    logic   [31:0]              s_raw [OW];
+    logic                       s_comp[OW];
+    logic   [31:0]              s_pc  [OW];
+    logic   [GHR_LEN-1:0]       s_ghr [OW];
+    logic                       s_pt  [OW];
+    logic   [31:0]              s_ptgt[OW];
+    logic                       s_br  [OW];
+    logic   [$clog2(NC)-1:0]    s_src [OW];         // which candidate filled this stream slot
+    logic   [$clog2(OW+1)-1:0]  n_avail;            // how many valid instrs available (0..OW)
 
     always_comb begin
         automatic int k = 0;
-        for (int i = 0; i < IF_WIDTH; i++) begin
+        for (int i = 0; i < OW; i++) begin
             s_inst[i] = 'x; s_raw[i] = 'x; s_comp[i] = 1'b0; s_pc[i] = 'x; s_ghr[i] = 'x; s_pt[i] = 1'b0;
             s_ptgt[i] = 'x; s_br[i] = 1'b0; s_src[i] = '0;
         end
         for (int j = 0; j < NC; j++) begin
-            if (c_v[j] && (k < IF_WIDTH)) begin
+            if (c_v[j] && (k < OW)) begin
                 s_inst[k] = c_inst[j];
                 s_raw [k] = c_raw[j];
                 s_comp[k] = c_comp[j];
@@ -137,7 +143,7 @@ import fetch_types::*, cpu_params::*; #(
                 k++;
             end
         end
-        n_avail = (IF_WIDTH+1)'(k);
+        n_avail = ($clog2(OW+1))'(k);
     end
 
     // ---- build the output bundle: at most ONE branch per bundle ----
@@ -147,12 +153,12 @@ import fetch_types::*, cpu_params::*; #(
     // only forms on the predicted path). Recovery is slot-granular (rob.sv) so a
     // younger same-row instr is squashed on a mispredict. We still cap at one
     // branch per bundle -- the control buffer dequeues one branch per row.
-    logic   [IF_WIDTH-1:0]      bundle_valid;
-    logic   [$clog2(IF_WIDTH+1)-1:0] bundle_count;
+    logic   [OW-1:0]            bundle_valid;
+    logic   [$clog2(OW+1)-1:0]  bundle_count;
     always_comb begin
         automatic logic br_seen = 1'b0;
         bundle_valid = '0;
-        for (int i = 0; i < IF_WIDTH; i++) begin
+        for (int i = 0; i < OW; i++) begin
             if (unsigned'(i) < n_avail) begin
                 if (i == 0) begin
                     bundle_valid[i] = 1'b1;
@@ -163,8 +169,8 @@ import fetch_types::*, cpu_params::*; #(
             end
         end
         bundle_count = '0;
-        for (int i = 0; i < IF_WIDTH; i++)
-            if (bundle_valid[i]) bundle_count = ($clog2(IF_WIDTH+1))'(bundle_count + 1);
+        for (int i = 0; i < OW; i++)
+            if (bundle_valid[i]) bundle_count = ($clog2(OW+1))'(bundle_count + 1);
     end
 
     // ---- drive the output interface ----
@@ -178,7 +184,7 @@ import fetch_types::*, cpu_params::*; #(
     assign out.valid = have_h && ~head_empty && (n_avail != '0);
     always_comb begin
         out.packet = '0;
-        for (int i = 0; i < IF_WIDTH; i++) begin
+        for (int i = 0; i < OW; i++) begin
             out.packet.valid[i]          = bundle_valid[i];
             out.packet.inst[i]           = s_inst[i];
             out.packet.inst_raw[i]       = s_raw[i];
@@ -191,11 +197,44 @@ import fetch_types::*, cpu_params::*; #(
     end
 
     // ---- advance the read pointer / slot by bundle_count instructions ----
+    // Generalized for IF_WIDTH > ID_WIDTH: a fetch packet has IF_WIDTH prefix-valid
+    // slots, drained ID_WIDTH per cycle. last_src is the candidate index (0..NC-1)
+    // of the last consumed instr; for head candidates the index equals the absolute
+    // slot, for head+1 candidates the slot is index-IF_WIDTH. We move to the next
+    // valid slot after it, crossing into head+1 (and on to the packet after) only
+    // when the current head packet is fully drained.
     logic                   deq_fire;
     assign deq_fire = out.valid && out.ready;
 
     logic   [$clog2(NC)-1:0]    last_src;       // candidate index of the last consumed instr
     assign last_src = s_src[bundle_count - 1'b1];
+
+    // Does the head packet still have a valid slot after the last consumed head
+    // slot? (guarded index so we never read head.valid out of range.)
+    logic                       head_more;
+    logic   [ADDR_IDX-1:0]      head_nx_slot;
+    always_comb begin
+        head_more    = 1'b0;
+        head_nx_slot = '0;
+        if (unsigned'(last_src) + 1 < IF_WIDTH) begin
+            head_nx_slot = (ADDR_IDX)'(unsigned'(last_src) + 1);
+            head_more    = head.valid[head_nx_slot];
+        end
+    end
+
+    // If the last consumed instr was in head+1, does head+1 have a valid slot after?
+    logic                       h1_more;
+    logic   [ADDR_IDX-1:0]      h1_cur_slot;    // slot of last consumed within head+1
+    logic   [ADDR_IDX-1:0]      h1_nx_slot;
+    always_comb begin
+        h1_more     = 1'b0;
+        h1_cur_slot = (ADDR_IDX)'(unsigned'(last_src) - IF_WIDTH);
+        h1_nx_slot  = '0;
+        if (unsigned'(h1_cur_slot) + 1 < IF_WIDTH) begin
+            h1_nx_slot = (ADDR_IDX)'(unsigned'(h1_cur_slot) + 1);
+            h1_more    = head1.valid[h1_nx_slot];
+        end
+    end
 
     logic   [ADDR_IDX:0]    nxt_rd_ptr;
     logic   [ADDR_IDX-1:0]  nxt_rd_slot;
@@ -209,21 +248,21 @@ import fetch_types::*, cpu_params::*; #(
         end else if (deq_fire) begin
             if (c_inh[last_src]) begin
                 // last consumed instr was in the head packet
-                if (head.valid[1] && (c_slot[last_src] == '0)) begin
-                    // consumed head slot0, head slot1 still valid -> stay, advance slot
+                if (head_more) begin
+                    // head still has a valid slot after -> stay, advance slot
                     nxt_rd_ptr  = rd_ptr;
-                    nxt_rd_slot = (ADDR_IDX)'(1);
+                    nxt_rd_slot = head_nx_slot;
                 end else begin
-                    // head exhausted (consumed its last valid slot) -> next packet
+                    // head exhausted -> next packet, slot 0
                     nxt_rd_ptr  = (ADDR_IDX+1)'(rd_ptr + 1);
                     nxt_rd_slot = '0;
                 end
             end else begin
-                // last consumed instr was in head+1: head fully consumed too
-                if (head1.valid[1] && (c_slot[last_src] == '0)) begin
-                    // consumed head+1 slot0, its slot1 still valid -> head becomes head+1
+                // last consumed instr was in head+1: head fully consumed -> head+1
+                // becomes the new head (rd_ptr+1)
+                if (h1_more) begin
                     nxt_rd_ptr  = (ADDR_IDX+1)'(rd_ptr + 1);
-                    nxt_rd_slot = (ADDR_IDX)'(1);
+                    nxt_rd_slot = h1_nx_slot;
                 end else begin
                     nxt_rd_ptr  = (ADDR_IDX+1)'(rd_ptr + 2);
                     nxt_rd_slot = '0;

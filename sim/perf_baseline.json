@@ -1,83 +1,83 @@
 {
-  "coremark_imc": {
-    "program": "coremark_imc",
-    "ipc": 1.265613,
+  "coremark_im": {
+    "program": "coremark_im",
+    "ipc": 1.426545,
     "ipc_kind": "segment",
-    "segment_cycles": 230373,
-    "run_cycles": 243728,
+    "segment_cycles": 204384,
+    "run_cycles": 215656,
     "clock_period_ps": 2780,
     "branch": {
-      "total": 62031,
-      "total_mispredict": 2455,
-      "total_rate_pct": 3.96,
-      "cond_total": 56380,
-      "cond_mispredict": 2141,
-      "cond_rate_pct": 3.8,
-      "uncond_total": 5651,
-      "uncond_mispredict": 314,
-      "uncond_rate_pct": 5.56
+      "total": 63017,
+      "total_mispredict": 2036,
+      "total_rate_pct": 3.23,
+      "cond_total": 57268,
+      "cond_mispredict": 1941,
+      "cond_rate_pct": 3.39,
+      "uncond_total": 5749,
+      "uncond_mispredict": 95,
+      "uncond_rate_pct": 1.65
     },
     "dispatch_stall": {
-      "int": 3153,
-      "intm": 44,
-      "br": 326,
-      "mem": 747
+      "int": 9968,
+      "intm": 110,
+      "br": 753,
+      "mem": 1336
     },
     "lsu": {
-      "loads": 57272,
-      "disambig_block": 4340,
-      "viol": 113,
-      "viol_flush": 108
+      "loads": 57137,
+      "disambig_block": 6605,
+      "viol": 117,
+      "viol_flush": 113
     },
     "muldiv": {
-      "mul": 9525,
+      "mul": 9659,
       "div": 0
     },
     "dcache": {
-      "misses": 394,
-      "miss_stall_cyc": 2832,
-      "stb_full_cyc": 1872
+      "misses": 317,
+      "miss_stall_cyc": 2859,
+      "stb_full_cyc": 1977
     },
     "rvfi_errors": 0
   },
-  "coremark_im": {
-    "program": "coremark_im",
-    "ipc": 1.412673,
+  "coremark_imc": {
+    "program": "coremark_imc",
+    "ipc": 1.381854,
     "ipc_kind": "segment",
-    "segment_cycles": 206391,
-    "run_cycles": 217982,
+    "segment_cycles": 210994,
+    "run_cycles": 223097,
     "clock_period_ps": 2780,
     "branch": {
-      "total": 63093,
-      "total_mispredict": 2015,
-      "total_rate_pct": 3.19,
-      "cond_total": 57334,
-      "cond_mispredict": 1925,
-      "cond_rate_pct": 3.36,
-      "uncond_total": 5759,
-      "uncond_mispredict": 90,
-      "uncond_rate_pct": 1.56
+      "total": 62755,
+      "total_mispredict": 2637,
+      "total_rate_pct": 4.2,
+      "cond_total": 57056,
+      "cond_mispredict": 2183,
+      "cond_rate_pct": 3.83,
+      "uncond_total": 5699,
+      "uncond_mispredict": 454,
+      "uncond_rate_pct": 7.97
     },
     "dispatch_stall": {
-      "int": 9952,
-      "intm": 114,
-      "br": 558,
-      "mem": 1295
+      "int": 8259,
+      "intm": 100,
+      "br": 591,
+      "mem": 1302
     },
     "lsu": {
-      "loads": 57234,
-      "disambig_block": 7090,
-      "viol": 111,
-      "viol_flush": 107
+      "loads": 57623,
+      "disambig_block": 5807,
+      "viol": 141,
+      "viol_flush": 136
     },
     "muldiv": {
-      "mul": 9658,
-      "div": 0
+      "mul": 9602,
+      "div": 1
     },
     "dcache": {
-      "misses": 340,
-      "miss_stall_cyc": 2834,
-      "stb_full_cyc": 1927
+      "misses": 454,
+      "miss_stall_cyc": 2958,
+      "stb_full_cyc": 1932
     },
     "rvfi_errors": 0
   }
