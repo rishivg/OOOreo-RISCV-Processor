@@ -1,0 +1,21 @@
+# Scala / sbt
+target/
+project/target/
+project/project/
+.bsp/
+.bloop/
+.metals/
+.scala-build/
+
+# generated + sim artifacts
+gen/
+simWorkspace/
+*.fst
+*.vcd
+*.anno.json
+*.fir
+null/
+
+# stray sim/jvm artifacts
+hs_err_pid*.log
+tmp/
