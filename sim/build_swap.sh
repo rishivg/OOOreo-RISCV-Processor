@@ -36,6 +36,12 @@ case "$MOD" in
     EXCLUDE="$ROOT/hdl/memory/dcache/dcache_ctrl.sv"
     PROGS=("coremark_im" "coremark_imc")        # every D-cache miss exercises the FSM
     ;;
+  control_buffer)
+    GEN_MAIN="ooo.GenerateControlBuffer"; GEN_V="$ROOT/hdl_spinal/gen/control_buffer_spinal.v"
+    EXCLUDE="$ROOT/hdl/backend/branch/control_buffer.sv"
+    SHIM="$ROOT/sim/swap_shims/control_buffer.sv" # carries ds_rs_mono/br_cdb/cb_rob/cb_bp
+    PROGS=("coremark_im" "coremark_imc")          # every committed branch trains via the CB
+    ;;
   icache_ctrl)
     GEN_MAIN="ooo.GenerateIcacheCtrl"; GEN_V="$ROOT/hdl_spinal/gen/icache_ctrl_spinal.v"
     EXCLUDE="$ROOT/hdl/frontend/icache/icache_ctrl.sv"
