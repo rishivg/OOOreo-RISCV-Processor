@@ -11,3 +11,5 @@ time.txt
 *.dis
 
 verilator_spinal/
+
+verilator_swap/
