@@ -58,6 +58,12 @@ case "$MOD" in
     SHIM="$ROOT/sim/swap_shims/issue_arbiter.sv" # un-flattens the unpacked-array ports
     PROGS=("coremark_im" "coremark_imc")        # every INT issue exercises it
     ;;
+  int_rs)
+    GEN_MAIN="ooo.GenerateIntRs"; GEN_V="$ROOT/hdl_spinal/gen/int_rs_spinal.v"
+    EXCLUDE="$ROOT/hdl/backend/execute/int_rs/int_rs.sv"
+    SHIM="$ROOT/sim/swap_shims/int_rs.sv"       # carries ds_rs/rs_prf/cdb interfaces
+    PROGS=("coremark_im" "coremark_imc")        # the whole integer RS subsystem
+    ;;
   *) echo "unknown module: $MOD"; exit 2 ;;
 esac
 
