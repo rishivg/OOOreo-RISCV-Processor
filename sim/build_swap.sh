@@ -12,6 +12,7 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MOD="${1:?usage: build_swap.sh <decoder|decompressor>}"
+SHIM=""   # optional extra SV file(s): an interface-adapting shim for the swap
 
 case "$MOD" in
   decoder)
@@ -38,6 +39,12 @@ case "$MOD" in
     GEN_MAIN="ooo.GenerateFuMul"; GEN_V="$ROOT/hdl_spinal/gen/fu_mul.v"
     EXCLUDE="$ROOT/hdl/backend/execute/intm_rs/fu_mul.sv"
     PROGS=("coremark_im" "coremark_imc")        # ~9700 multiplies in CoreMark
+    ;;
+  fu_alu)
+    GEN_MAIN="ooo.GenerateFuAlu"; GEN_V="$ROOT/hdl_spinal/gen/fu_alu_spinal.v"
+    EXCLUDE="$ROOT/hdl/backend/execute/int_rs/fu_alu.sv"
+    SHIM="$ROOT/sim/swap_shims/fu_alu.sv"       # carries the cdb_itf SV interface
+    PROGS=("coremark_im" "coremark_imc")        # every ALU op exercises it
     ;;
   *) echo "unknown module: $MOD"; exit 2 ;;
 esac
@@ -71,7 +78,7 @@ verilator \
   -Wall -Wno-fatal --timescale 1ps/1ps -Mdir build -O1 -CFLAGS "-O1" \
   --x-assign fast --x-initial fast --noassert --cc --exe --build \
   "$ROOT/sim/verilator_warn.vlt" \
-  $PKG $HDL_SRCS "$GEN_V" $COMM_HVL $VER_HVL $SRAM $DW_IP \
+  $PKG $HDL_SRCS "$GEN_V" $SHIM $COMM_HVL $VER_HVL $SRAM $DW_IP \
   --top-module top_tb 2>&1 | tee build/compile_swap.log
 if [ ! -x build/Vtop_tb ]; then echo "BUILD FAILED"; exit 1; fi
 echo "BUILD OK"
