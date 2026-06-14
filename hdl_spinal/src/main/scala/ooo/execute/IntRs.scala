@@ -65,10 +65,10 @@ class IntRs(cfg: CpuConfig = CpuConfig()) extends Component {
     config = ClockDomainConfig(resetActiveLevel = HIGH, resetKind = SYNC))
 
   new ClockingArea(coreDomain) {
-    val entries = (0 until D).map(_ => new RsEntry(cfg))
+    val entries = (0 until D).map(_ => new RsEntry(cfg, RsEntryLayout.int))
 
-    // dispatch entries (pre-extracted, packed)
-    val from_ds_entry = (0 until IDW).map(w => IntRsEntry.fromBits(io.from_ds_entry_flat(w * EW, EW bits)))
+    // dispatch entries (pre-extracted, packed Bits(EW))
+    val from_ds_entry = (0 until IDW).map(w => io.from_ds_entry_flat(w * EW, EW bits))
 
     // wakeup CDB vec (shared by all slots)
     val wcdb = Vec(CdbRs(), CDBW)
@@ -77,15 +77,15 @@ class IntRs(cfg: CpuConfig = CpuConfig()) extends Component {
     val fb = Vec(BypassNet(), NFB)
     for (k <- 0 until NFB) { fb(k) := BypassNet.fromBits(alus(k).io.bypass) }
 
-    // per-slot wires
+    // per-slot wires (entries are opaque Bits(EW) -- generic RsEntry)
     val rs_valid     = Vec(Bool(), D)
     val rs_request   = Vec(Bool(), D)
-    val rs_entry_out = Vec(IntRsEntry(), D)
-    val rs_entry     = Vec(IntRsEntry(), D)
+    val rs_entry_out = Vec(Bits(EW bits), D)
+    val rs_entry     = Vec(Bits(EW bits), D)
     val rs_bypass    = Vec(BypassT(), D)
     val push_en  = Vec(Bool(), D)
     val clear    = Vec(Bool(), D)
-    val entry_in = Vec(IntRsEntry(), D)
+    val entry_in = Vec(Bits(EW bits), D)
 
     for (i <- 0 until D) {
       val e = entries(i)
@@ -131,8 +131,8 @@ class IntRs(cfg: CpuConfig = CpuConfig()) extends Component {
       val sel1 = doPush1 && (slot1 === i)
       rs_push(i) := sel1 ## sel0
     }
-    // push entry per slot (one-hot mux over dispatch slots)
-    val rs_push_entry = (0 until D).map(i => IntRsEntry.fromBits(orMux(rs_push(i), from_ds_entry.map(_.toBits))))
+    // push entry per slot (one-hot mux over dispatch slots) -- from_ds_entry is Bits(EW)
+    val rs_push_entry = (0 until D).map(i => orMux(rs_push(i), from_ds_entry))
 
     // compaction / update mux
     for (i <- 0 until D) {
@@ -141,18 +141,18 @@ class IntRs(cfg: CpuConfig = CpuConfig()) extends Component {
       } .elsewhen(rs_valid(i) && comp(i).orR) {                // NEXT (shift down)
         when(comp(i) === B"2'b10") {                           // +2
           if (i + 2 < D) { push_en(i) := rs_valid(i + 2); clear(i) := !rs_valid(i + 2); entry_in(i) := rs_entry_out(i + 2) }
-          else           { push_en(i) := False; clear(i) := True; entry_in(i).assignFromBits(B(0, EW bits)) }
+          else           { push_en(i) := False; clear(i) := True; entry_in(i) := B(0, EW bits) }
         } otherwise {                                          // +1
           if (i + 1 < D) { push_en(i) := rs_valid(i + 1); clear(i) := !rs_valid(i + 1); entry_in(i) := rs_entry_out(i + 1) }
-          else           { push_en(i) := False; clear(i) := True; entry_in(i).assignFromBits(B(0, EW bits)) }
+          else           { push_en(i) := False; clear(i) := True; entry_in(i) := B(0, EW bits) }
         }
       } .otherwise {                                           // SELF
-        push_en(i) := False; clear(i) := False; entry_in(i).assignFromBits(B(0, EW bits))
+        push_en(i) := False; clear(i) := False; entry_in(i) := B(0, EW bits)
       }
     }
 
     // issued entry + bypass (one-hot mux over slots, per issue port)
-    val issued = (0 until W).map(k => IntRsEntry.fromBits(orMux(fu_issue(k), rs_entry.map(_.toBits))))
+    val issued = (0 until W).map(k => IntRsEntry.fromBits(orMux(fu_issue(k), rs_entry)))
     val rs1_value = (0 until W).map(k => io.to_prf_rs1_value_flat(k * 32, 32 bits))
     val rs2_value = (0 until W).map(k => io.to_prf_rs2_value_flat(k * 32, 32 bits))
 

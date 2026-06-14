@@ -12,7 +12,8 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MOD="${1:?usage: build_swap.sh <decoder|decompressor>}"
-SHIM=""   # optional extra SV file(s): an interface-adapting shim for the swap
+SHIM=""          # optional extra SV file(s): an interface-adapting shim for the swap
+EXTRA_EXCLUDE=""  # optional 2nd SV file to drop (e.g. a leaf the SpinalHDL re-emits)
 
 case "$MOD" in
   decoder)
@@ -70,6 +71,19 @@ case "$MOD" in
     SHIM="$ROOT/sim/swap_shims/int_rs.sv"       # carries ds_rs/rs_prf/cdb interfaces
     PROGS=("coremark_im" "coremark_imc")        # the whole integer RS subsystem
     ;;
+  br_rs)
+    GEN_MAIN="ooo.GenerateBrRs"; GEN_V="$ROOT/hdl_spinal/gen/br_rs_spinal.v"
+    EXCLUDE="$ROOT/hdl/backend/branch/br_rs/br_rs.sv"
+    SHIM="$ROOT/sim/swap_shims/br_rs.sv"        # carries ds_rs_mono/rs_prf/cdb/br_cdb
+    PROGS=("coremark_im" "coremark_imc")        # the branch RS subsystem
+    ;;
+  intm_rs)
+    GEN_MAIN="ooo.GenerateIntmRs"; GEN_V="$ROOT/hdl_spinal/gen/intm_rs_spinal.v"
+    EXCLUDE="$ROOT/hdl/backend/execute/intm_rs/intm_rs.sv"
+    SHIM="$ROOT/sim/swap_shims/intm_rs.sv"      # +SV fu_div (DW); mul/div RS subsystem
+    EXTRA_EXCLUDE="$ROOT/hdl/backend/execute/intm_rs/fu_mul.sv"  # intm_rs_spinal re-emits fu_mul
+    PROGS=("coremark_im" "coremark_imc")
+    ;;
   *) echo "unknown module: $MOD"; exit 2 ;;
 esac
 
@@ -79,7 +93,7 @@ echo "[1/4] generate SpinalHDL $MOD -> ${GEN_V#$ROOT/}"
 
 echo "[2/4] assemble file list (SV $MOD excluded, generated twin added)"
 PKG="$ROOT/pkg/types.sv"
-HDL_SRCS=$(find "$ROOT/hdl" -name '*.sv' ! -path "$EXCLUDE" | sort)
+HDL_SRCS=$(find "$ROOT/hdl" -name '*.sv' ! -path "$EXCLUDE" ${EXTRA_EXCLUDE:+! -path "$EXTRA_EXCLUDE"} | sort)
 COMM_HVL=$(find "$ROOT/hvl/common" \( -name '*.sv' -o -name '*.v' -o -name '*.o' \) | sort)
 if [ "${DROP_PERF:-0}" = "1" ]; then
   COMM_HVL=$(echo "$COMM_HVL" | grep -v 'perf_monitor.sv')   # taps swapped-module internals
