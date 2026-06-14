@@ -46,6 +46,12 @@ case "$MOD" in
     SHIM="$ROOT/sim/swap_shims/fu_alu.sv"       # carries the cdb_itf SV interface
     PROGS=("coremark_im" "coremark_imc")        # every ALU op exercises it
     ;;
+  fu_br)
+    GEN_MAIN="ooo.GenerateFuBr"; GEN_V="$ROOT/hdl_spinal/gen/fu_br_spinal.v"
+    EXCLUDE="$ROOT/hdl/backend/branch/br_rs/fu_br.sv"
+    SHIM="$ROOT/sim/swap_shims/fu_br.sv"        # carries cdb_itf + br_cdb_itf
+    PROGS=("coremark_im" "coremark_imc")        # every branch/jal/jalr exercises it
+    ;;
   *) echo "unknown module: $MOD"; exit 2 ;;
 esac
 
