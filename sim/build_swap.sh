@@ -29,6 +29,16 @@ case "$MOD" in
     EXCLUDE="$ROOT/hdl/memory/mem_rs/fu_agu.sv"
     PROGS=("coremark_im" "coremark_imc")        # every load/store exercises the AGU
     ;;
+  dcache_ctrl)
+    GEN_MAIN="ooo.GenerateDcacheCtrl"; GEN_V="$ROOT/hdl_spinal/gen/dcache_ctrl.v"
+    EXCLUDE="$ROOT/hdl/memory/dcache/dcache_ctrl.sv"
+    PROGS=("coremark_im" "coremark_imc")        # every D-cache miss exercises the FSM
+    ;;
+  fu_mul)
+    GEN_MAIN="ooo.GenerateFuMul"; GEN_V="$ROOT/hdl_spinal/gen/fu_mul.v"
+    EXCLUDE="$ROOT/hdl/backend/execute/intm_rs/fu_mul.sv"
+    PROGS=("coremark_im" "coremark_imc")        # ~9700 multiplies in CoreMark
+    ;;
   *) echo "unknown module: $MOD"; exit 2 ;;
 esac
 
@@ -40,6 +50,10 @@ echo "[2/4] assemble file list (SV $MOD excluded, generated twin added)"
 PKG="$ROOT/pkg/types.sv"
 HDL_SRCS=$(find "$ROOT/hdl" -name '*.sv' ! -path "$EXCLUDE" | sort)
 COMM_HVL=$(find "$ROOT/hvl/common" \( -name '*.sv' -o -name '*.v' -o -name '*.o' \) | sort)
+if [ "${DROP_PERF:-0}" = "1" ]; then
+  COMM_HVL=$(echo "$COMM_HVL" | grep -v 'perf_monitor.sv')   # taps swapped-module internals
+  echo "    (perf_monitor.sv dropped -- it taps internals of $MOD)"
+fi
 VER_HVL=$(find "$ROOT/hvl/verilator" \( -name '*.sv' -o -name '*.v' -o -name '*.o' -o -name '*.cpp' \) | sort)
 SRAM=$(find "$ROOT/sram/output" -name '*.v' | sort)
 NO_FLOAT=$(python3 "$ROOT/bin/get_options.py" no_float)
