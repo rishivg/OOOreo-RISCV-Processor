@@ -24,6 +24,11 @@ case "$MOD" in
     EXCLUDE="$ROOT/hdl/frontend/decompressor.sv"
     PROGS=("coremark_imc" "coremark_im")        # imc exercises C-decode; im = regression
     ;;
+  fu_agu)
+    GEN_MAIN="ooo.GenerateFuAgu"; GEN_V="$ROOT/hdl_spinal/gen/fu_agu.v"
+    EXCLUDE="$ROOT/hdl/memory/mem_rs/fu_agu.sv"
+    PROGS=("coremark_im" "coremark_imc")        # every load/store exercises the AGU
+    ;;
   *) echo "unknown module: $MOD"; exit 2 ;;
 esac
 
