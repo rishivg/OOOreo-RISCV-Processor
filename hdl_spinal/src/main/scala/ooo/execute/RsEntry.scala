@@ -51,7 +51,7 @@ object RsEntryLayout {
   val int  = RsEntryLayout(69, 57, 50, 56, 49)    // int_rs_entry_t
   val intm = RsEntryLayout(35, 23, 16, 22, 15)    // intm_rs_entry_t
   val br   = RsEntryLayout(133, 121, 114, 120, 113) // br_rs_entry_t
-  val mem  = RsEntryLayout(50, 38, 31, 37, 30)    // mem_rs_entry_t (see MemRs)
+  val mem  = RsEntryLayout(56, 44, 37, 43, 36)    // mem_rs_entry_t (no rd fields)
 }
 
 /** SpinalHDL port of `hdl/common/rs_entry.sv`, generic over the entry type via

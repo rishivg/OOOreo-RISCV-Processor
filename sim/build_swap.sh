@@ -84,6 +84,13 @@ case "$MOD" in
     EXTRA_EXCLUDE="$ROOT/hdl/backend/execute/intm_rs/fu_mul.sv"  # intm_rs_spinal re-emits fu_mul
     PROGS=("coremark_im" "coremark_imc")
     ;;
+  mem_rs)
+    GEN_MAIN="ooo.GenerateMemRs"; GEN_V="$ROOT/hdl_spinal/gen/mem_rs_spinal.v"
+    EXCLUDE="$ROOT/hdl/memory/mem_rs/mem_rs.sv"
+    SHIM="$ROOT/sim/swap_shims/mem_rs.sv"       # carries ds_rs_mono/rs_prf/cdb/agu_lsq
+    EXTRA_EXCLUDE="$ROOT/hdl/memory/mem_rs/fu_agu.sv"  # mem_rs_spinal re-emits fu_agu
+    PROGS=("coremark_im" "coremark_imc")        # the memory RS subsystem
+    ;;
   *) echo "unknown module: $MOD"; exit 2 ;;
 esac
 
