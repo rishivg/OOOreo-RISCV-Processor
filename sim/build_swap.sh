@@ -52,6 +52,12 @@ case "$MOD" in
     SHIM="$ROOT/sim/swap_shims/fu_br.sv"        # carries cdb_itf + br_cdb_itf
     PROGS=("coremark_im" "coremark_imc")        # every branch/jal/jalr exercises it
     ;;
+  issue_arbiter)
+    GEN_MAIN="ooo.GenerateIssueArbiter"; GEN_V="$ROOT/hdl_spinal/gen/issue_arbiter_spinal.v"
+    EXCLUDE="$ROOT/hdl/backend/execute/int_rs/issue_arbiter.sv"
+    SHIM="$ROOT/sim/swap_shims/issue_arbiter.sv" # un-flattens the unpacked-array ports
+    PROGS=("coremark_im" "coremark_imc")        # every INT issue exercises it
+    ;;
   *) echo "unknown module: $MOD"; exit 2 ;;
 esac
 
