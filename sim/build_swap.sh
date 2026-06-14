@@ -35,6 +35,12 @@ case "$MOD" in
     EXCLUDE="$ROOT/hdl/memory/dcache/dcache_ctrl.sv"
     PROGS=("coremark_im" "coremark_imc")        # every D-cache miss exercises the FSM
     ;;
+  icache_ctrl)
+    GEN_MAIN="ooo.GenerateIcacheCtrl"; GEN_V="$ROOT/hdl_spinal/gen/icache_ctrl_spinal.v"
+    EXCLUDE="$ROOT/hdl/frontend/icache/icache_ctrl.sv"
+    SHIM="$ROOT/sim/swap_shims/icache_ctrl.sv"  # parameterized + un-flattens arrays
+    PROGS=("coremark_im" "coremark_imc")        # every I-cache miss exercises the FSM
+    ;;
   fu_mul)
     GEN_MAIN="ooo.GenerateFuMul"; GEN_V="$ROOT/hdl_spinal/gen/fu_mul.v"
     EXCLUDE="$ROOT/hdl/backend/execute/intm_rs/fu_mul.sv"
