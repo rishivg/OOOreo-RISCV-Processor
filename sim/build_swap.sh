@@ -114,6 +114,12 @@ case "$MOD" in
     SHIM="$ROOT/sim/swap_shims/store_buf.sv"    # stq_stb + stb_dmem + ldq_stb itfs
     PROGS=("coremark_im" "coremark_imc")        # every committed store drains via the STB
     ;;
+  dmem_arbiter)
+    GEN_MAIN="ooo.GenerateDmemArbiter"; GEN_V="$ROOT/hdl_spinal/gen/dmem_arbiter_spinal.v"
+    EXCLUDE="$ROOT/hdl/common/dmem_arbiter.sv"
+    SHIM="$ROOT/sim/swap_shims/dmem_arbiter.sv" # ldq_dmem + stb_dmem + dmem itfs
+    PROGS=("coremark_im" "coremark_imc")        # every D-cache access arbitrates here
+    ;;
   dcache)
     GEN_MAIN="ooo.GenerateDcache"; GEN_V="$ROOT/hdl_spinal/gen/dcache_spinal.v"
     EXCLUDE="$ROOT/hdl/memory/dcache/dcache.sv"
