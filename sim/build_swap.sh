@@ -90,6 +90,12 @@ case "$MOD" in
     EXTRA_EXCLUDE="$ROOT/hdl/backend/execute/intm_rs/fu_mul.sv"  # intm_rs_spinal re-emits fu_mul
     PROGS=("coremark_im" "coremark_imc")
     ;;
+  lsu_adapter)
+    GEN_MAIN="ooo.GenerateLsuAdapter"; GEN_V="$ROOT/hdl_spinal/gen/lsu_adapter_spinal.v"
+    EXCLUDE="$ROOT/hdl/memory/lsu_adapter.sv"
+    SHIM="$ROOT/sim/swap_shims/lsu_adapter.sv"  # 4x ds_rs_mono_itf; fans out uop
+    PROGS=("coremark_im" "coremark_imc")        # every memory dispatch fans out here
+    ;;
   store_buf)
     GEN_MAIN="ooo.GenerateStoreBuf"; GEN_V="$ROOT/hdl_spinal/gen/store_buf_spinal.v"
     EXCLUDE="$ROOT/hdl/memory/store_buf.sv"
