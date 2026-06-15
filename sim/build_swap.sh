@@ -130,6 +130,13 @@ case "$MOD" in
     EXTRA_EXCLUDE="$ROOT/hdl/frontend/fetch_align.sv $ROOT/hdl/frontend/decompressor.sv"
     PROGS=("coremark_im" "coremark_imc")        # the whole front-end cluster
     ;;
+  id_stage)
+    GEN_MAIN="ooo.GenerateIdStage"; GEN_V="$ROOT/hdl_spinal/gen/id_stage_spinal.v"
+    EXCLUDE="$ROOT/hdl/backend/decode/id_stage.sv"
+    EXTRA_EXCLUDE="$ROOT/hdl/backend/decode/decoder.sv"  # id_stage_spinal re-emits decoder
+    SHIM="$ROOT/sim/swap_shims/id_stage.sv"     # fifo_backend + id_rat/fl/rob + uop/rvfi assembly
+    PROGS=("coremark_im" "coremark_imc")        # decode/filter/rename for every instruction
+    ;;
   ds_stage)
     GEN_MAIN="ooo.GenerateDsStage"; GEN_V="$ROOT/hdl_spinal/gen/ds_stage_spinal.v"
     EXCLUDE="$ROOT/hdl/backend/decode/ds_stage.sv"
