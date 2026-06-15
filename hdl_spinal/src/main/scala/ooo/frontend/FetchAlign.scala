@@ -45,33 +45,44 @@ class FetchAlign(cfg: CpuConfig = CpuConfig()) extends Component {
   val nValid = io.n_valid.asUInt
   val pcU    = io.pc.asUInt
 
+  // --- parallel-prefix realign: precompute per-parcel length + next-start, then
+  // resolve the slot start indices off a precomputed table (no wide parcel mux,
+  // no validity, in the index recurrence). Behaviour == the original serial walk.
+  val comp32 = Vec(Bool(), PMAX)                         // parcel p begins a 16-bit op
+  val nxtPos = Vec(UInt(PIDX bits), PMAX)               // unstopped next start from p
+  for (p <- 0 until PMAX) {
+    comp32(p) := parcelsVec(p)(1 downto 0) =/= B"2'b11"
+    nxtPos(p) := (U(p, PIDX bits) + Mux(comp32(p), U(1, PIDX bits), U(2, PIDX bits))).resize(PIDX bits)
+  }
+  def comp(i: UInt): Bool = comp32(i.resize(log2Up(PMAX) bits))
+
+  val start = Vec(UInt(PIDX bits), IFW + 1)              // slot start parcel indices
+  start(0) := 0
+  for (s <- 1 to IFW) start(s) := nxtPos(start(s - 1).resize(log2Up(PMAX) bits))
+
   val instComp  = Vec(Bool(), IFW)
   val instValid = Vec(Bool(), IFW)
   val instPc    = Vec(Bits(32 bits), IFW)
   val seqNext   = Vec(Bits(32 bits), IFW)
   val raw       = Vec(Bits(32 bits), IFW)
 
-  // sequential walk over the parcels (Scala fold carries start index + still-valid)
-  var idx: UInt = U(0, PIDX bits)
   var stillValid: Bool = True
+  var consumedAcc: UInt = start(0)
   for (s <- 0 until IFW) {
+    val idx   = start(s)
     val hi    = (idx + 1).resize(PIDX bits)
-    val p     = par(idx)
-    val compS = p(1 downto 0) =/= B"2'b11"
-    val loOk  = idx < nValid
-    val hiOk  = hi  < nValid
-    val thisValid = stillValid && loOk && (compS || hiOk)
+    val compS = comp(idx)
+    val thisValid = stillValid && (idx < nValid) && (compS || (hi < nValid))
     instComp(s)  := compS
     instValid(s) := thisValid
-    raw(s)       := Mux(compS, B(0, 16 bits) ## p, par(hi) ## p)
+    raw(s)       := Mux(compS, B(0, 16 bits) ## par(idx), par(hi) ## par(idx))
     val ipc = (pcU + (idx << 1).resize(32 bits)).asBits
     instPc(s)    := ipc
     seqNext(s)   := (ipc.asUInt + Mux(compS, U(2, 32 bits), U(4, 32 bits))).asBits
-    val nextIdx = Mux(thisValid, (idx + Mux(compS, U(1, PIDX bits), U(2, PIDX bits))).resize(PIDX bits), idx)
+    consumedAcc = Mux(thisValid, start(s + 1), consumedAcc)   // last valid slot's end
     stillValid = stillValid && thisValid
-    idx = nextIdx
   }
-  val consumedU = idx                                    // start_idx[IF_WIDTH]
+  val consumedU = consumedAcc                            // start_idx[IF_WIDTH]
 
   // span: trailing 32-bit op whose high parcel lies past the valid window
   val bIdx     = Mux(consumedU < U(PMAX, PIDX bits), consumedU, U(0, PIDX bits))
