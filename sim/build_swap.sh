@@ -90,6 +90,12 @@ case "$MOD" in
     EXTRA_EXCLUDE="$ROOT/hdl/backend/execute/intm_rs/fu_mul.sv"  # intm_rs_spinal re-emits fu_mul
     PROGS=("coremark_im" "coremark_imc")
     ;;
+  rob)
+    GEN_MAIN="ooo.GenerateRob"; GEN_V="$ROOT/hdl_spinal/gen/rob_spinal.v"
+    EXCLUDE="$ROOT/hdl/backend/rename/rob.sv"
+    SHIM="$ROOT/sim/swap_shims/rob.sv"          # 6 itfs + rvfi_itf tap + perf taps
+    PROGS=("coremark_im" "coremark_imc")        # the whole commit/RVFI path
+    ;;
   free_list)
     GEN_MAIN="ooo.GenerateFreeList"; GEN_V="$ROOT/hdl_spinal/gen/free_list_spinal.v"
     EXCLUDE="$ROOT/hdl/backend/rename/free_list.sv"
