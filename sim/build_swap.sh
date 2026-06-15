@@ -130,6 +130,12 @@ case "$MOD" in
     EXTRA_EXCLUDE="$ROOT/hdl/frontend/fetch_align.sv $ROOT/hdl/frontend/decompressor.sv"
     PROGS=("coremark_im" "coremark_imc")        # the whole front-end cluster
     ;;
+  rrf)
+    GEN_MAIN="ooo.GenerateRrf"; GEN_V="$ROOT/hdl_spinal/gen/rrf_spinal.v"
+    EXCLUDE="$ROOT/hdl/backend/rename/rrf.sv"
+    SHIM="$ROOT/sim/swap_shims/rrf.sv"          # rob_rrf + rrf_fl itfs + rrf_mem array
+    PROGS=("coremark_im" "coremark_imc")        # every commit updates the RRF
+    ;;
   inst_queue)
     GEN_MAIN="ooo.GenerateInstQueue"; GEN_V="$ROOT/hdl_spinal/gen/inst_queue_spinal.v"
     EXCLUDE="$ROOT/hdl/frontend/inst_queue.sv"
