@@ -143,6 +143,14 @@ case "$MOD" in
     SHIM="$ROOT/sim/swap_shims/ds_stage.sv"     # ds_rs/ds_rs_mono itfs + uop routing + perf
     PROGS=("coremark_im" "coremark_imc")        # every dispatch routes here
     ;;
+  backend_top)
+    GEN_MAIN="ooo.GenerateBackendTop"; GEN_V="$ROOT/hdl_spinal/gen/backend_top_spinal.v"
+    EXCLUDE="$ROOT/hdl/backend/backend_top.sv"
+    SHIM="$ROOT/sim/swap_shims/backend_top.sv"  # ext itfs + SV fu_div + all perf scopes + rvfi
+    # re-emits decoder (IdStage) + fu_agu (LsuTop/MemRs) + fu_mul (IntmRs) + dcache_ctrl (Dcache)
+    EXTRA_EXCLUDE="$ROOT/hdl/backend/decode/decoder.sv $ROOT/hdl/memory/mem_rs/fu_agu.sv $ROOT/hdl/backend/execute/intm_rs/fu_mul.sv $ROOT/hdl/memory/dcache/dcache_ctrl.sv"
+    PROGS=("coremark_im" "coremark_imc")        # the whole OOO back-end
+    ;;
   branch_top)
     GEN_MAIN="ooo.GenerateBranchTop"; GEN_V="$ROOT/hdl_spinal/gen/branch_top_spinal.v"
     EXCLUDE="$ROOT/hdl/backend/branch/branch_top.sv"
