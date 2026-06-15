@@ -23,7 +23,7 @@ class LruArray(setW: Int, w: Int) extends Component {
   new ClockingArea(domain) {
     val addr0Reg = Reg(Bits(setW bits)); val din0Reg = Reg(Bits(w bits))
     val web1Reg = RegInit(True); val addr1Reg = Reg(Bits(setW bits)); val din1Reg = Reg(Bits(w bits))
-    val array = Vec(RegInit(B(0, w bits)), 1 << setW)
+    val array = Vec(Reg(Bits(w bits)), 1 << setW)   // PLRU hint self-corrects -> no reset
     when(!io.csb0) { addr0Reg := io.addr0; din0Reg := io.din0 }
     when(!io.csb1) { web1Reg := io.web1; addr1Reg := io.addr1; din1Reg := io.din1 }
     when(!web1Reg) { array(addr1Reg.asUInt) := din1Reg }

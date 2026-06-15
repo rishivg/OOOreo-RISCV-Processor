@@ -86,8 +86,10 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     val ghrSpec   = RegInit(B(0, GHR bits))
     val ghrCommit = RegInit(B(0, GHR bits))
     val useAltOnNa = RegInit(U(8, 4 bits))
-    val bimodal = Vec.fill(PHTD)(RegInit(U(1, 2 bits)))                 // base predictor (init 01)
-    val tt = Array.tabulate(NUM)(_ => Vec.fill(TDEPTH)(RegInit(zeroEntry())))
+    val bimodal = Vec.fill(PHTD)(RegInit(U(1, 2 bits)))                 // base predictor (init 01; reset kept -- stripping it perturbs warm-up IPC)
+    // tagged tables self-correct (a stale tag just mispredicts, then is overwritten)
+    // -> no reset: drops ~NUM*TDEPTH*entryW reset flops off the predictor.
+    val tt = Array.tabulate(NUM)(_ => Vec.fill(TDEPTH)(Reg(TageEntry())))
 
     io.ghr_snapshot := ghrSpec
 
