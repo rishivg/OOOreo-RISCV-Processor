@@ -130,6 +130,12 @@ case "$MOD" in
     EXTRA_EXCLUDE="$ROOT/hdl/frontend/fetch_align.sv $ROOT/hdl/frontend/decompressor.sv"
     PROGS=("coremark_im" "coremark_imc")        # the whole front-end cluster
     ;;
+  ds_stage)
+    GEN_MAIN="ooo.GenerateDsStage"; GEN_V="$ROOT/hdl_spinal/gen/ds_stage_spinal.v"
+    EXCLUDE="$ROOT/hdl/backend/decode/ds_stage.sv"
+    SHIM="$ROOT/sim/swap_shims/ds_stage.sv"     # ds_rs/ds_rs_mono itfs + uop routing + perf
+    PROGS=("coremark_im" "coremark_imc")        # every dispatch routes here
+    ;;
   branch_top)
     GEN_MAIN="ooo.GenerateBranchTop"; GEN_V="$ROOT/hdl_spinal/gen/branch_top_spinal.v"
     EXCLUDE="$ROOT/hdl/backend/branch/branch_top.sv"
