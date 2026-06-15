@@ -114,6 +114,14 @@ case "$MOD" in
     SHIM="$ROOT/sim/swap_shims/store_buf.sv"    # stq_stb + stb_dmem + ldq_stb itfs
     PROGS=("coremark_im" "coremark_imc")        # every committed store drains via the STB
     ;;
+  lsu_top)
+    GEN_MAIN="ooo.GenerateLsuTop"; GEN_V="$ROOT/hdl_spinal/gen/lsu_top_spinal.v"
+    EXCLUDE="$ROOT/hdl/memory/lsu_top.sv"
+    SHIM="$ROOT/sim/swap_shims/lsu_top.sv"      # external itfs + perf sub-scopes
+    # lsu_top_spinal re-emits fu_agu (via MemRs) + dcache_ctrl (via Dcache)
+    EXTRA_EXCLUDE="$ROOT/hdl/memory/mem_rs/fu_agu.sv $ROOT/hdl/memory/dcache/dcache_ctrl.sv"
+    PROGS=("coremark_im" "coremark_imc")        # the whole LSU subsystem
+    ;;
   dmem_arbiter)
     GEN_MAIN="ooo.GenerateDmemArbiter"; GEN_V="$ROOT/hdl_spinal/gen/dmem_arbiter_spinal.v"
     EXCLUDE="$ROOT/hdl/common/dmem_arbiter.sv"
@@ -197,7 +205,9 @@ echo "[1/4] generate SpinalHDL $MOD -> ${GEN_V#$ROOT/}"
 
 echo "[2/4] assemble file list (SV $MOD excluded, generated twin added)"
 PKG="$ROOT/pkg/types.sv"
-HDL_SRCS=$(find "$ROOT/hdl" -name '*.sv' ! -path "$EXCLUDE" ${EXTRA_EXCLUDE:+! -path "$EXTRA_EXCLUDE"} | sort)
+EXARGS=()                                   # EXTRA_EXCLUDE may be a space-separated list
+for x in ${EXTRA_EXCLUDE:-}; do EXARGS+=(! -path "$x"); done
+HDL_SRCS=$(find "$ROOT/hdl" -name '*.sv' ! -path "$EXCLUDE" "${EXARGS[@]}" | sort)
 COMM_HVL=$(find "$ROOT/hvl/common" \( -name '*.sv' -o -name '*.v' -o -name '*.o' \) | sort)
 if [ "${DROP_PERF:-0}" = "1" ]; then
   COMM_HVL=$(echo "$COMM_HVL" | grep -v 'perf_monitor.sv')   # taps swapped-module internals
