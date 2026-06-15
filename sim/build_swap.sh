@@ -90,6 +90,12 @@ case "$MOD" in
     EXTRA_EXCLUDE="$ROOT/hdl/backend/execute/intm_rs/fu_mul.sv"  # intm_rs_spinal re-emits fu_mul
     PROGS=("coremark_im" "coremark_imc")
     ;;
+  store_queue)
+    GEN_MAIN="ooo.GenerateStoreQueue"; GEN_V="$ROOT/hdl_spinal/gen/store_queue_spinal.v"
+    EXCLUDE="$ROOT/hdl/memory/store_queue.sv"
+    SHIM="$ROOT/sim/swap_shims/store_queue.sv"  # 5 itfs + perf taps (fifo addr_valid)
+    PROGS=("coremark_im" "coremark_imc")        # every store + load disambiguation
+    ;;
   lsu_adapter)
     GEN_MAIN="ooo.GenerateLsuAdapter"; GEN_V="$ROOT/hdl_spinal/gen/lsu_adapter_spinal.v"
     EXCLUDE="$ROOT/hdl/memory/lsu_adapter.sv"
