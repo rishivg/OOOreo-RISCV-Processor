@@ -90,6 +90,12 @@ case "$MOD" in
     EXTRA_EXCLUDE="$ROOT/hdl/backend/execute/intm_rs/fu_mul.sv"  # intm_rs_spinal re-emits fu_mul
     PROGS=("coremark_im" "coremark_imc")
     ;;
+  load_queue)
+    GEN_MAIN="ooo.GenerateLoadQueue"; GEN_V="$ROOT/hdl_spinal/gen/load_queue_spinal.v"
+    EXCLUDE="$ROOT/hdl/memory/load_queue.sv"
+    SHIM="$ROOT/sim/swap_shims/load_queue.sv"   # 7 itfs + perf taps (ldq_arr/issue_en)
+    PROGS=("coremark_im" "coremark_imc")         # every load issues/forwards/violates here
+    ;;
   store_queue)
     GEN_MAIN="ooo.GenerateStoreQueue"; GEN_V="$ROOT/hdl_spinal/gen/store_queue_spinal.v"
     EXCLUDE="$ROOT/hdl/memory/store_queue.sv"
