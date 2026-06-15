@@ -90,6 +90,12 @@ case "$MOD" in
     EXTRA_EXCLUDE="$ROOT/hdl/backend/execute/intm_rs/fu_mul.sv"  # intm_rs_spinal re-emits fu_mul
     PROGS=("coremark_im" "coremark_imc")
     ;;
+  ubtb)
+    GEN_MAIN="ooo.GenerateUbtb"; GEN_V="$ROOT/hdl_spinal/gen/ubtb_spinal.v"
+    EXCLUDE="$ROOT/hdl/frontend/branch_predictor/ubtb.sv"
+    SHIM="$ROOT/sim/swap_shims/ubtb.sv"         # carries cb_bp_itf.bp from_cb
+    PROGS=("coremark_im" "coremark_imc")        # every taken branch/jump trains the uBTB
+    ;;
   ras)
     GEN_MAIN="ooo.GenerateRas"; GEN_V="$ROOT/hdl_spinal/gen/ras_spinal.v"
     EXCLUDE="$ROOT/hdl/frontend/branch_predictor/ras.sv"
