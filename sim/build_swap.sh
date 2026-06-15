@@ -143,6 +143,18 @@ case "$MOD" in
     SHIM="$ROOT/sim/swap_shims/ds_stage.sv"     # ds_rs/ds_rs_mono itfs + uop routing + perf
     PROGS=("coremark_im" "coremark_imc")        # every dispatch routes here
     ;;
+  cache_adapter)
+    GEN_MAIN="ooo.GenerateCacheAdapter"; GEN_V="$ROOT/hdl_spinal/gen/cache_adapter_spinal.v"
+    EXCLUDE="$ROOT/hdl/common/cache_adapter.sv"
+    SHIM="$ROOT/sim/swap_shims/cache_adapter.sv"  # cacheline.slave ufp + bmem dfp
+    PROGS=("coremark_im" "coremark_imc")          # every bmem access streams through
+    ;;
+  bmem_arbiter)
+    GEN_MAIN="ooo.GenerateBmemArbiter"; GEN_V="$ROOT/hdl_spinal/gen/bmem_arbiter_spinal.v"
+    EXCLUDE="$ROOT/hdl/common/bmem_arbiter.sv"
+    SHIM="$ROOT/sim/swap_shims/bmem_arbiter.sv"   # 3 cacheline interfaces
+    PROGS=("coremark_im" "coremark_imc")          # every cache miss arbitrates here
+    ;;
   backend_top)
     GEN_MAIN="ooo.GenerateBackendTop"; GEN_V="$ROOT/hdl_spinal/gen/backend_top_spinal.v"
     EXCLUDE="$ROOT/hdl/backend/backend_top.sv"
