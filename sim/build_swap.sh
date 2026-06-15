@@ -90,6 +90,12 @@ case "$MOD" in
     EXTRA_EXCLUDE="$ROOT/hdl/backend/execute/intm_rs/fu_mul.sv"  # intm_rs_spinal re-emits fu_mul
     PROGS=("coremark_im" "coremark_imc")
     ;;
+  hit_detection)
+    GEN_MAIN="ooo.GenerateHitDetection"; GEN_V="$ROOT/hdl_spinal/gen/hit_detection_spinal.v"
+    EXCLUDE="$ROOT/hdl/memory/dcache/hit_detection.sv"
+    SHIM="$ROOT/sim/swap_shims/hit_detection.sv"  # parameterized + un-flattens arrays
+    PROGS=("coremark_im" "coremark_imc")          # every D-cache access does hit detect
+    ;;
   rob)
     GEN_MAIN="ooo.GenerateRob"; GEN_V="$ROOT/hdl_spinal/gen/rob_spinal.v"
     EXCLUDE="$ROOT/hdl/backend/rename/rob.sv"
