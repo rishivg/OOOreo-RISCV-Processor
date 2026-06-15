@@ -114,6 +114,13 @@ case "$MOD" in
     SHIM="$ROOT/sim/swap_shims/store_buf.sv"    # stq_stb + stb_dmem + ldq_stb itfs
     PROGS=("coremark_im" "coremark_imc")        # every committed store drains via the STB
     ;;
+  dcache)
+    GEN_MAIN="ooo.GenerateDcache"; GEN_V="$ROOT/hdl_spinal/gen/dcache_spinal.v"
+    EXCLUDE="$ROOT/hdl/memory/dcache/dcache.sv"
+    EXTRA_EXCLUDE="$ROOT/hdl/memory/dcache/dcache_ctrl.sv"  # dcache_spinal re-emits dcache_ctrl
+    SHIM="$ROOT/sim/swap_shims/dcache.sv"       # dmem_itf + cacheline_itf + perf sub-scope
+    PROGS=("coremark_im" "coremark_imc")        # every load/store hits the D-cache datapath
+    ;;
   hit_detection)
     GEN_MAIN="ooo.GenerateHitDetection"; GEN_V="$ROOT/hdl_spinal/gen/hit_detection_spinal.v"
     EXCLUDE="$ROOT/hdl/memory/dcache/hit_detection.sv"
