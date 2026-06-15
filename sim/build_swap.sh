@@ -122,6 +122,14 @@ case "$MOD" in
     EXTRA_EXCLUDE="$ROOT/hdl/memory/mem_rs/fu_agu.sv $ROOT/hdl/memory/dcache/dcache_ctrl.sv"
     PROGS=("coremark_im" "coremark_imc")        # the whole LSU subsystem
     ;;
+  frontend_top)
+    GEN_MAIN="ooo.GenerateFrontendTop"; GEN_V="$ROOT/hdl_spinal/gen/frontend_top_spinal.v"
+    EXCLUDE="$ROOT/hdl/frontend/frontend_top.sv"
+    SHIM="$ROOT/sim/swap_shims/frontend_top.sv" # frontend_fifo + cacheline + cb_bp + perf scope
+    # frontend_top_spinal re-emits fetch_align + decompressor (via FetchAlign)
+    EXTRA_EXCLUDE="$ROOT/hdl/frontend/fetch_align.sv $ROOT/hdl/frontend/decompressor.sv"
+    PROGS=("coremark_im" "coremark_imc")        # the whole front-end cluster
+    ;;
   inst_queue)
     GEN_MAIN="ooo.GenerateInstQueue"; GEN_V="$ROOT/hdl_spinal/gen/inst_queue_spinal.v"
     EXCLUDE="$ROOT/hdl/frontend/inst_queue.sv"
