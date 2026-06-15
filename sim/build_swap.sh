@@ -122,6 +122,12 @@ case "$MOD" in
     EXTRA_EXCLUDE="$ROOT/hdl/memory/mem_rs/fu_agu.sv $ROOT/hdl/memory/dcache/dcache_ctrl.sv"
     PROGS=("coremark_im" "coremark_imc")        # the whole LSU subsystem
     ;;
+  inst_queue)
+    GEN_MAIN="ooo.GenerateInstQueue"; GEN_V="$ROOT/hdl_spinal/gen/inst_queue_spinal.v"
+    EXCLUDE="$ROOT/hdl/frontend/inst_queue.sv"
+    SHIM="$ROOT/sim/swap_shims/inst_queue.sv"   # frontend_fifo + fifo_backend per-field + perf tap
+    PROGS=("coremark_im" "coremark_imc")        # the compacting instruction queue
+    ;;
   if1_stage)
     GEN_MAIN="ooo.GenerateIf1Stage"; GEN_V="$ROOT/hdl_spinal/gen/if1_stage_spinal.v"
     EXCLUDE="$ROOT/hdl/frontend/if1_stage.sv"
