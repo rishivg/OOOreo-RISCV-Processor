@@ -90,6 +90,12 @@ case "$MOD" in
     EXTRA_EXCLUDE="$ROOT/hdl/backend/execute/intm_rs/fu_mul.sv"  # intm_rs_spinal re-emits fu_mul
     PROGS=("coremark_im" "coremark_imc")
     ;;
+  fetch_align)
+    GEN_MAIN="ooo.GenerateFetchAlign"; GEN_V="$ROOT/hdl_spinal/gen/fetch_align.v"
+    EXCLUDE="$ROOT/hdl/frontend/fetch_align.sv"
+    EXTRA_EXCLUDE="$ROOT/hdl/frontend/decompressor.sv"  # fetch_align re-emits decompressor
+    PROGS=("coremark_imc" "coremark_im")        # imc exercises the C-realign; im = regression
+    ;;
   tage)
     GEN_MAIN="ooo.GenerateTage"; GEN_V="$ROOT/hdl_spinal/gen/tage_spinal.v"
     EXCLUDE="$ROOT/hdl/frontend/branch_predictor/tage.sv"
