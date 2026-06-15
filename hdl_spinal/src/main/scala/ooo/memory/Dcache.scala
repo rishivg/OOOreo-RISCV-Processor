@@ -21,34 +21,7 @@ class DcacheTagArray(setW: Int, tagW: Int) extends BlackBox {
   }
   noIoPrefix()
 }
-class ValidArray(setW: Int) extends BlackBox {
-  setBlackBoxName("valid_array")
-  addGeneric("S_INDEX", setW); addGeneric("WIDTH", 1)
-  val io = new Bundle {
-    val clk0 = in Bool(); val rst0 = in Bool(); val csb0 = in Bool(); val web0 = in Bool()
-    val addr0 = in Bits(setW bits); val din0 = in Bits(1 bits); val dout0 = out Bits(1 bits)
-  }
-  noIoPrefix()
-}
-class LruArray(setW: Int, w: Int) extends BlackBox {
-  setBlackBoxName("lru_array")
-  addGeneric("S_INDEX", setW); addGeneric("WIDTH", w)
-  val io = new Bundle {
-    val clk0 = in Bool(); val rst0 = in Bool()
-    val csb0 = in Bool(); val addr0 = in Bits(setW bits); val din0 = in Bits(w bits); val dout0 = out Bits(w bits)
-    val csb1 = in Bool(); val web1 = in Bool(); val addr1 = in Bits(setW bits); val din1 = in Bits(w bits)
-  }
-  noIoPrefix()
-}
-class PlruUpdate(numWays: Int, plruBits: Int, wayBits: Int) extends BlackBox {
-  setBlackBoxName("plru_update")
-  addGeneric("NUM_WAYS", numWays); addGeneric("PLRU_BITS", plruBits); addGeneric("WAY_BITS", wayBits)
-  val io = new Bundle {
-    val current_plru = in Bits(plruBits bits); val next_plru = out Bits(plruBits bits)
-    val hit_way = in Bits(wayBits bits); val replace_way = out Bits(wayBits bits)
-  }
-  noIoPrefix()
-}
+// lru_array / valid_array / plru_update are real SpinalHDL Components (CacheArrays.scala).
 
 /** SpinalHDL port of `hdl/memory/dcache/dcache.sv` -- the D-cache datapath.
   *

@@ -4,18 +4,7 @@ import spinal.core._
 import ooo.frontend.{FrontendTop, InstQueue}
 import ooo.backend.BackendTop
 import ooo.common.{CacheAdapter, BmemArbiter}
-
-/** Real SV fu_div (DW_div_seq inside) -- blackboxed so it stays SV in the build. */
-class FuDiv extends BlackBox {
-  setBlackBoxName("fu_div")
-  val io = new Bundle {
-    val clk = in Bool(); val rst = in Bool()
-    val prv_valid = in Bool(); val prv_ready = out Bool()
-    val nxt_valid = out Bool(); val nxt_ready = in Bool()
-    val iss_in = in Bits (85 bits); val cdb_out = out Bits (113 bits)
-  }
-  noIoPrefix()
-}
+import ooo.execute.FuDiv
 
 /** Top-level core -- the Phase-4 full integration. Emits module `cpu` with the
   * exact SV bmem boundary (clk, rst, bmem_*), plus a debug `rvfi_flat` output
@@ -48,7 +37,7 @@ class Cpu(cfg: CpuConfig = CpuConfig()) extends Component {
   val backend  = new BackendTop(cfg)
   val arb      = new BmemArbiter(cfg)
   val ca       = new CacheAdapter(cfg)
-  val fudiv    = new FuDiv
+  val fudiv    = new FuDiv(cfg)
 
   val flush = backend.io.backend_flush
   for (c <- Seq(frontend.io.clk, iq.io.clk, backend.io.clk, arb.io.clk, ca.io.clk, fudiv.io.clk)) c := io.clk

@@ -14,11 +14,8 @@ CPU="$ROOT/hdl_spinal/gen/cpu.v"
 [ -f "$CPU" ] || { echo "missing $CPU"; exit 1; }
 
 echo "[2/3] verilator build"
-# SV hdl/ modules the SpinalHDL core leaves as blackboxes: fu_div (DW_div_seq) +
-# the cache helper arrays (lru/plru/valid) + skid_buffer (used by fu_div).
-BBOX_SV="$ROOT/hdl/backend/execute/intm_rs/fu_div.sv \
-$ROOT/hdl/common/cache/lru_array.sv $ROOT/hdl/common/cache/plru_update.sv \
-$ROOT/hdl/common/cache/valid_array.sv $ROOT/hdl/common/skid_buffer.sv"
+# The SpinalHDL core is standalone -- the only external modules are vendor/IP:
+# the SRAM macros (sram/output) + DW_div_seq (hvl/common/dw_mock.sv, in HVL_COMMON).
 HVL_COMMON=$(find "$ROOT/hvl/common" \( -name '*.sv' -o -name '*.v' -o -name '*.o' \) ! -name 'perf_monitor.sv' | sort)
 TB="$ROOT/hvl/verilator_spinal/top_tb_spinal.sv"
 HARNESS=$(find "$ROOT/hvl/verilator" -name '*.cpp')
@@ -35,7 +32,7 @@ verilator \
   -Wall -Wno-fatal --timescale 1ps/1ps -Mdir build -O1 -CFLAGS "-O1" \
   --x-assign fast --x-initial fast --noassert --cc --exe --build \
   "$ROOT/sim/verilator_warn.vlt" \
-  "$ROOT/pkg/types.sv" "$CPU" $BBOX_SV $HVL_COMMON "$TB" $HARNESS $SRAM $DW_IP \
+  "$ROOT/pkg/types.sv" "$CPU" $HVL_COMMON "$TB" $HARNESS $SRAM $DW_IP \
   --top-module top_tb 2>&1 | tee build/compile_spinal.log
 if [ ! -x build/Vtop_tb ]; then echo "BUILD FAILED"; exit 1; fi
 echo "BUILD OK"
