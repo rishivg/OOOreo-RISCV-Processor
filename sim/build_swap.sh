@@ -90,6 +90,12 @@ case "$MOD" in
     EXTRA_EXCLUDE="$ROOT/hdl/backend/execute/intm_rs/fu_mul.sv"  # intm_rs_spinal re-emits fu_mul
     PROGS=("coremark_im" "coremark_imc")
     ;;
+  prf)
+    GEN_MAIN="ooo.GeneratePrf"; GEN_V="$ROOT/hdl_spinal/gen/prf_spinal.v"
+    EXCLUDE="$ROOT/hdl/backend/execute/prf.sv"
+    SHIM="$ROOT/sim/swap_shims/prf.sv"          # rs_prf_itf[5]+cdb_itf.prf[5]+bypass[2]
+    PROGS=("coremark_im" "coremark_imc")        # every register read/write hits the PRF
+    ;;
   fetch_align)
     GEN_MAIN="ooo.GenerateFetchAlign"; GEN_V="$ROOT/hdl_spinal/gen/fetch_align.v"
     EXCLUDE="$ROOT/hdl/frontend/fetch_align.sv"
