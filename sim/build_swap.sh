@@ -90,6 +90,12 @@ case "$MOD" in
     EXTRA_EXCLUDE="$ROOT/hdl/backend/execute/intm_rs/fu_mul.sv"  # intm_rs_spinal re-emits fu_mul
     PROGS=("coremark_im" "coremark_imc")
     ;;
+  store_buf)
+    GEN_MAIN="ooo.GenerateStoreBuf"; GEN_V="$ROOT/hdl_spinal/gen/store_buf_spinal.v"
+    EXCLUDE="$ROOT/hdl/memory/store_buf.sv"
+    SHIM="$ROOT/sim/swap_shims/store_buf.sv"    # stq_stb + stb_dmem + ldq_stb itfs
+    PROGS=("coremark_im" "coremark_imc")        # every committed store drains via the STB
+    ;;
   hit_detection)
     GEN_MAIN="ooo.GenerateHitDetection"; GEN_V="$ROOT/hdl_spinal/gen/hit_detection_spinal.v"
     EXCLUDE="$ROOT/hdl/memory/dcache/hit_detection.sv"
