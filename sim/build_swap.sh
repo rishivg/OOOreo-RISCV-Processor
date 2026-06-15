@@ -122,6 +122,12 @@ case "$MOD" in
     EXTRA_EXCLUDE="$ROOT/hdl/memory/mem_rs/fu_agu.sv $ROOT/hdl/memory/dcache/dcache_ctrl.sv"
     PROGS=("coremark_im" "coremark_imc")        # the whole LSU subsystem
     ;;
+  if1_stage)
+    GEN_MAIN="ooo.GenerateIf1Stage"; GEN_V="$ROOT/hdl_spinal/gen/if1_stage_spinal.v"
+    EXCLUDE="$ROOT/hdl/frontend/if1_stage.sv"
+    SHIM="$ROOT/sim/swap_shims/if1_stage.sv"    # cacheline_itf + packed-2D insts + perf tap
+    PROGS=("coremark_im" "coremark_imc")        # the fetch stage (icache handshake)
+    ;;
   icache)
     GEN_MAIN="ooo.GenerateIcache"; GEN_V="$ROOT/hdl_spinal/gen/icache_spinal.v"
     EXCLUDE="$ROOT/hdl/frontend/icache/icache.sv"
