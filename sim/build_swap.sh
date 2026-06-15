@@ -90,6 +90,12 @@ case "$MOD" in
     EXTRA_EXCLUDE="$ROOT/hdl/backend/execute/intm_rs/fu_mul.sv"  # intm_rs_spinal re-emits fu_mul
     PROGS=("coremark_im" "coremark_imc")
     ;;
+  rat)
+    GEN_MAIN="ooo.GenerateRat"; GEN_V="$ROOT/hdl_spinal/gen/rat_spinal.v"
+    EXCLUDE="$ROOT/hdl/backend/rename/rat.sv"
+    SHIM="$ROOT/sim/swap_shims/rat.sv"          # id_rat_itf + cdb_itf.rat[5] + rrf_mem[32]
+    PROGS=("coremark_im" "coremark_imc")        # every rename reads/writes the RAT
+    ;;
   prf)
     GEN_MAIN="ooo.GeneratePrf"; GEN_V="$ROOT/hdl_spinal/gen/prf_spinal.v"
     EXCLUDE="$ROOT/hdl/backend/execute/prf.sv"
