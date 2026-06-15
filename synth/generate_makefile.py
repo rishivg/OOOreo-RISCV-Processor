@@ -1,29 +1,27 @@
+# Generate synth/Makefile for the SpinalHDL core. The core is emitted directly as
+# Verilog (hdl_spinal/gen/cpu.v) -- no SV, no sv2v, no package headers. Synthesis
+# reads cpu.v + the SRAM macros + the DW_div_seq divider IP (hvl/common/dw_mock.sv).
+# (The PPA/PD4 docker flow targets are appended to synth/Makefile separately.)
 with open("Makefile", "w") as f:
     f.write("SHELL=/bin/bash -o pipefail\n")
     f.write(".SHELLFLAGS += -e\n\n")
     f.write("export DESIGN_TOP = cpu\n\n")
     f.write(".PHONY: synth\n")
     f.write("synth:\n")
-    f.write("\t@mkdir -p reports outputs work/src\n")
-    f.write("\t@rm -rf work/src/* work/pkg_headers\n")
-    f.write("\t@echo \"Copying sources...\"\n")
-    f.write("\t@mkdir -p work/src/hdl work/src/pkg\n")
-    f.write("\t@cp -r ../hdl/* work/src/hdl/\n")
-    f.write("\t@cp -r ../pkg/* work/src/pkg/\n") # Types are in ../pkg
+    f.write("\t@mkdir -p reports outputs work/src/sram\n")
+    f.write("\t@rm -rf work/src/*\n")
     f.write("\t@mkdir -p work/src/sram\n")
+    f.write("\t@echo \"Generating SpinalHDL core -> gen/cpu.v...\"\n")
+    f.write("\t@cd ../hdl_spinal && sbt -batch \"runMain ooo.Generate\"\n")
+    f.write("\t@cp ../hdl_spinal/gen/cpu.v work/src/\n")
+    f.write("\t@cp ../hvl/common/dw_mock.sv work/src/\n") # DW_div_seq divider IP
     f.write("\t@if [ -d \"../sram/output\" ]; then cp -r ../sram/output/* work/src/sram/; fi\n")
-    f.write("\t@echo \"Splitting packages into headers...\"\n")
-    f.write("\t@python3 split_pkg.py\n")
-    f.write("\t@echo \"Converting imports to includes (moving to top)...\"\n")
-    f.write("\t@python3 convert_imports.py\n")
-
     f.write("\t@if command -v yosys >/dev/null 2>&1; then \\\n")
     f.write("\t\techo \"Found Yosys, generating synthesis script...\"; \\\n")
     f.write("\t\techo \"# Generated synthesis script\" > synthesis.ys; \\\n")
-    # Find all SV files in work/src/hdl. Order might matter?
-    # Usually modules depend on pkgs. Pkgs converted to headers.
-    f.write("\t\tfind work/src/hdl -name '*.sv' | sort | while read f; do echo \"read_verilog -sv -Iwork/pkg_headers $$f\" >> synthesis.ys; done; \\\n")
-    f.write("\t\tfind work/src/sram -name '*.v' | while read f; do echo \"read_verilog $$f\" >> synthesis.ys; done; \\\n")
+    f.write("\t\techo \"read_verilog -sv work/src/cpu.v\" >> synthesis.ys; \\\n")
+    f.write("\t\techo \"read_verilog -sv work/src/dw_mock.sv\" >> synthesis.ys; \\\n")
+    f.write("\t\tfind work/src/sram -name '*.v' | while read fv; do echo \"read_verilog $$fv\" >> synthesis.ys; done; \\\n")
     f.write("\t\techo \"prep -top $(DESIGN_TOP)\" >> synthesis.ys; \\\n")
     f.write("\t\techo \"hierarchy -check\" >> synthesis.ys; \\\n")
     f.write("\t\techo \"synth -top $(DESIGN_TOP)\" >> synthesis.ys; \\\n")
@@ -32,7 +30,7 @@ with open("Makefile", "w") as f:
     f.write("\t\techo \"tee -o reports/area.rpt stat -tech cmos\" >> synthesis.ys; \\\n")
     f.write("\t\tyosys -s synthesis.ys | tee synthesis.log; \\\n")
     f.write("\telse \\\n")
-    f.write("\t\techo \"Error: Yosys not found in PATH. Please install Yosys for open-source synthesis.\"; \\\n")
+    f.write("\t\techo \"Error: Yosys not found in PATH.\"; \\\n")
     f.write("\t\texit 1; \\\n")
     f.write("\tfi\n\n")
     f.write(".PHONY: clean\n")

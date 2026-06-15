@@ -21,6 +21,10 @@ PERIOD_PS=$(python3 bin/get_options.py clock)          # e.g. 2780
 PERIOD_NS=$(python3 -c "print($PERIOD_PS/1000.0)")
 
 if [[ "${1:-}" == "--remap" || ! -f "$DIR/netlist_pnr.v" ]]; then
+  # The core is SpinalHDL -> emit Verilog directly (no sv2v) to synth/opensource/cpu.v.
+  echo "[ppa] generating SpinalHDL core -> synth/opensource/cpu.v"
+  ( cd hdl_spinal && sbt -batch "runMain ooo.Generate" )
+  cp hdl_spinal/gen/cpu.v synth/opensource/cpu.v
   # PNR_FAST_MAP=1 uses abc -fast (single-pass map, ~5x faster) instead of the
   # timing-iterated abc -D 1000. Lower QoR but fine for relative A/B sweeps.
   MAP_YS="$DIR/map_pnr.ys"

@@ -5,22 +5,19 @@ export DESIGN_TOP = cpu
 
 .PHONY: synth
 synth:
-	@mkdir -p reports outputs work/src
-	@rm -rf work/src/* work/pkg_headers
-	@echo "Copying sources..."
-	@mkdir -p work/src/hdl work/src/pkg
-	@cp -r ../hdl/* work/src/hdl/
-	@cp -r ../pkg/* work/src/pkg/
+	@mkdir -p reports outputs work/src/sram
+	@rm -rf work/src/*
 	@mkdir -p work/src/sram
+	@echo "Generating SpinalHDL core -> gen/cpu.v..."
+	@cd ../hdl_spinal && sbt -batch "runMain ooo.Generate"
+	@cp ../hdl_spinal/gen/cpu.v work/src/
+	@cp ../hvl/common/dw_mock.sv work/src/
 	@if [ -d "../sram/output" ]; then cp -r ../sram/output/* work/src/sram/; fi
-	@echo "Splitting packages into headers..."
-	@python3 split_pkg.py
-	@echo "Converting imports to includes (moving to top)..."
-	@python3 convert_imports.py
 	@if command -v yosys >/dev/null 2>&1; then \
 		echo "Found Yosys, generating synthesis script..."; \
 		echo "# Generated synthesis script" > synthesis.ys; \
-		find work/src/hdl -name '*.sv' | sort | while read f; do echo "read_verilog -sv -Iwork/pkg_headers $$f" >> synthesis.ys; done; \
+		echo "read_verilog -sv work/src/cpu.v" >> synthesis.ys; \
+		echo "read_verilog -sv work/src/dw_mock.sv" >> synthesis.ys; \
 		find work/src/sram -name '*.v' | while read f; do echo "read_verilog $$f" >> synthesis.ys; done; \
 		echo "prep -top $(DESIGN_TOP)" >> synthesis.ys; \
 		echo "hierarchy -check" >> synthesis.ys; \
