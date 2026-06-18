@@ -59,6 +59,7 @@ class Rob(cfg: CpuConfig = CpuConfig()) extends Component {
     val from_id_rd_phy_flat  = in  Bits (IDW * PRF bits)
     val from_id_rd_arch_flat = in  Bits (IDW * ARF bits)
     val from_id_is_store     = in  Bits (IDW bits)
+    val from_id_is_atomic    = in  Bits (IDW bits)   // RV32A (aExt)
     val from_id_rvfi_dbg_flat = in Bits (IDW * RVFIW bits)
     // rob_rrf_itf.rob to_rrf
     val to_rrf_valid        = out Bits (IDW bits)
@@ -93,6 +94,9 @@ class Rob(cfg: CpuConfig = CpuConfig()) extends Component {
     val from_ldq_valid            = in Bool()
     val from_ldq_violation        = in Bool()
     val from_ldq_violation_rob_id = in Bits (RIDX bits)
+    // RV32A: head handshake to the AtomicUnit (atomic is oldest & not yet executed)
+    val atomic_go        = out Bool()
+    val atomic_go_rob_id = out Bits (RIDX bits)
     // rvfi_itf[ID_WIDTH] (hierarchically tapped, rebuilt in the shim)
     val rvfi_itf_flat = out Bits (IDW * RVFIW bits)
     // perf_monitor-tapped internals
@@ -136,6 +140,7 @@ class Rob(cfg: CpuConfig = CpuConfig()) extends Component {
     val robRdPhy   = Vec(Reg(Bits(PRF bits)), N)
     val robRdArch  = Vec(Reg(Bits(ARF bits)), N)
     val robIsStore = Vec(Reg(Bool()), N)
+    val robIsAtomic = Vec(Reg(Bool()), N)   // RV32A (aExt)
     val robMemViol = Vec(Reg(Bool()), N)
     val rvfiArr    = Vec(Reg(RvfiDbg()), N)
     val headPtrReg = RegInit(U(0, PIDX + 1 bits))
@@ -179,27 +184,44 @@ class Rob(cfg: CpuConfig = CpuConfig()) extends Component {
       }
     }
 
+    // ---- RV32A: fence-like atomic commit. An AMO/LR/SC is not in the STQ, so the
+    // LDQ can't squash a younger load that read its address before the RMW. When the
+    // atomic commits, flush everything younger (redirect to pc+4) so it re-executes
+    // observing the atomic's memory effect. The atomic is the oldest entry when it
+    // becomes ready, so it wins the redirect over any younger branch/violation.
+    val atomicFlush = Bool(); atomicFlush := False
+    val atomicSlot  = UInt(IIDX bits); atomicSlot := 0
+    if (cfg.aExt) {
+      for (i <- IDW - 1 downto 0) {
+        when(pop && robValid(headIdx(i)) && robIsAtomic(headIdx(i)) && robReady(headIdx(i))) {
+          atomicFlush := True; atomicSlot := U(i, IIDX bits)
+        }
+      }
+    }
+
     // ---- branch resolution / flush / redirect ----
     val brSlot   = io.from_cb_rob_id(IIDX - 1 downto 0).asUInt
     val cbEntry  = io.from_cb_rob_id(RIDX - 1 downto IIDX).asUInt
     val dequeue  = Mux(io.from_cb_ready, pop && (cbEntry === headPtr), False)
     io.from_cb_dequeue := dequeue
     val branchFlush  = dequeue && io.from_cb_miss_predict
-    val backendFlush = branchFlush || violFlush
+    val backendFlush = branchFlush || violFlush || atomicFlush
     io.backend_flush := backendFlush
     // Oldest flush cause wins the redirect. Previously violFlush unconditionally won,
     // which was correct only because br-older-than-violating-load never shared a row
     // (id_stage serialized br0+mem1). With br0+load1 now allowed, an older branch must
     // redirect to its target rather than the younger squashed load's PC.
     val brWins = branchFlush && (!violFlush || (brSlot < violSlot))
-    io.backend_redirect_pc := Mux(brWins, io.from_cb_target_address, rvfiArr(headIdxU(violSlot)).pc_rdata)
+    io.backend_redirect_pc := Mux(atomicFlush, (rvfiArr(headIdxU(atomicSlot)).pc_rdata.asUInt + 4).asBits,
+                               Mux(brWins, io.from_cb_target_address, rvfiArr(headIdxU(violSlot)).pc_rdata))
 
     // ---- slot-granular commit ----
     val commitInstr = Vec(Bool(), IDW)
     for (i <- 0 until IDW) {
       commitInstr(i) := pop && robValid(headIdx(i)) &&
         !(violFlush && (U(i, IIDX bits) >= violSlot)) &&
-        !(branchFlush && (U(i, IIDX bits) > brSlot))
+        !(branchFlush && (U(i, IIDX bits) > brSlot)) &&
+        !(atomicFlush && (U(i, IIDX bits) > atomicSlot))
     }
 
     // ---- from_id / to_rrf ----
@@ -261,6 +283,7 @@ class Rob(cfg: CpuConfig = CpuConfig()) extends Component {
           robRdPhy(tailIdx(i))   := fromIdRdPhy(i)
           robRdArch(tailIdx(i))  := fromIdRdArch(i)
           robIsStore(tailIdx(i)) := io.from_id_is_store(i)
+          robIsAtomic(tailIdx(i)) := io.from_id_is_atomic(i)
           robMemViol(tailIdx(i)) := False
           rvfiArr(tailIdx(i))    := rvfiFromBits(fromIdRvfi(i))
         }
@@ -288,6 +311,23 @@ class Rob(cfg: CpuConfig = CpuConfig()) extends Component {
     }
     // rvfi_order advances on pop (independent of flush; SV resets only on rst)
     when(pop) { rvfiOrder := rvfiOrder + commitInstrs }
+
+    // ---- RV32A: drive the AtomicUnit when an atomic is the oldest not-yet-ready
+    // entry at the head (all older head-row slots committed/ready). It executes the
+    // RMW non-speculatively and broadcasts on the CDB -> robReady -> normal commit.
+    val atomicGo = Bool(); atomicGo := False
+    val atomicGoId = Bits(RIDX bits); atomicGoId := 0
+    if (cfg.aExt) {
+      for (i <- IDW - 1 downto 0) {
+        val olderBusy = (0 until i).map(j => robValid(headIdx(j)) && !robReady(headIdx(j))).fold(False)(_ || _)
+        when(robValid(headIdx(i)) && robIsAtomic(headIdx(i)) && !robReady(headIdx(i)) && !olderBusy) {
+          atomicGo   := True
+          atomicGoId := headIdx(i).resize(RIDX bits).asBits
+        }
+      }
+    }
+    io.atomic_go        := atomicGo
+    io.atomic_go_rob_id := atomicGoId
 
     // ---- perf_monitor-tapped internals ----
     io.dbg_viol_flush   := violFlush

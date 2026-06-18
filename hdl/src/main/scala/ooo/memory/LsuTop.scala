@@ -38,6 +38,11 @@ class LsuTop(cfg: CpuConfig = CpuConfig()) extends Component {
     val uop_fu_opcode       = in  Bits (4 bits)
     val uop_rd_arch         = in  Bits (AIDX bits)
     val uop_rd_phy          = in  Bits (PIDX bits)
+    val uop_is_atomic       = in  Bool()              // RV32A (aExt)
+    val uop_amo_op          = in  Bits (4 bits)       // RV32A (aExt)
+    // RV32A: ROB head handshake -> AtomicUnit
+    val atomic_go           = in  Bool()
+    val atomic_go_rob_id    = in  Bits (RIDX bits)
     // to_prf (mem_rs single read port)
     val to_prf_rs1_phy   = out Bits (PIDX bits)
     val to_prf_rs2_phy   = out Bits (PIDX bits)
@@ -111,6 +116,7 @@ class LsuTop(cfg: CpuConfig = CpuConfig()) extends Component {
   val stb     = new StoreBuf(cfg)
   val arb     = new DmemArbiter(cfg)
   val dc      = new Dcache(cfg)
+  val atomicU = if (cfg.aExt) new AtomicUnit(cfg) else null
 
   // clocks / resets
   for (m <- Seq(memRs.io.clk, ldq.io.clk, stq.io.clk, stb.io.clk, arb.io.clk, dc.io.clk)) m := io.clk
@@ -146,19 +152,26 @@ class LsuTop(cfg: CpuConfig = CpuConfig()) extends Component {
   stq.io.from_agu_valid := memRs.io.to_lsq_valid
   stq.io.from_agu_data  := memRs.io.to_lsq_data
 
+  // RV32A: atomics still allocate in mem_rs (operand read + AGU) but must NOT create
+  // LDQ/STQ entries -- the AtomicUnit owns their memory effect.
+  val atomicSkip = if (cfg.aExt) io.uop_is_atomic else False
+
   // ---- load_queue dispatch + outputs ----
-  ldq.io.from_ds_valid        := adapter.io.to_ldq_valid
+  ldq.io.from_ds_valid        := adapter.io.to_ldq_valid && !atomicSkip
   ldq.io.from_ds_uop_rob_id   := io.uop_rob_id
   ldq.io.from_ds_uop_fu_opcode := io.uop_fu_opcode
   ldq.io.from_ds_uop_rd_arch  := io.uop_rd_arch
   ldq.io.from_ds_uop_rd_phy   := io.uop_rd_phy
-  io.fu_cdb_rob_id        := ldq.io.cdb_rob_id
-  io.fu_cdb_rd_phy        := ldq.io.cdb_rd_phy
-  io.fu_cdb_rd_arch       := ldq.io.cdb_rd_arch
-  io.fu_cdb_rd_value      := ldq.io.cdb_rd_value
-  io.fu_cdb_rs1_value_dbg := ldq.io.cdb_rs1_value_dbg
-  io.fu_cdb_rs2_value_dbg := ldq.io.cdb_rs2_value_dbg
-  io.fu_cdb_valid         := ldq.io.cdb_valid
+  // RV32A: AtomicUnit result takes priority on the LSU CDB lane (atomics execute at
+  // the ROB head; a younger load's CDB does not fire that cycle on the serial path).
+  val aCdbV = if (cfg.aExt) atomicU.io.cdb_valid else False
+  io.fu_cdb_rob_id        := Mux(aCdbV, if (cfg.aExt) atomicU.io.cdb_rob_id   else ldq.io.cdb_rob_id,   ldq.io.cdb_rob_id)
+  io.fu_cdb_rd_phy        := Mux(aCdbV, if (cfg.aExt) atomicU.io.cdb_rd_phy   else ldq.io.cdb_rd_phy,   ldq.io.cdb_rd_phy)
+  io.fu_cdb_rd_arch       := Mux(aCdbV, if (cfg.aExt) atomicU.io.cdb_rd_arch  else ldq.io.cdb_rd_arch,  ldq.io.cdb_rd_arch)
+  io.fu_cdb_rd_value      := Mux(aCdbV, if (cfg.aExt) atomicU.io.cdb_rd_value else ldq.io.cdb_rd_value, ldq.io.cdb_rd_value)
+  io.fu_cdb_rs1_value_dbg := Mux(aCdbV, if (cfg.aExt) atomicU.io.cdb_rs1_dbg  else ldq.io.cdb_rs1_value_dbg, ldq.io.cdb_rs1_value_dbg)
+  io.fu_cdb_rs2_value_dbg := Mux(aCdbV, if (cfg.aExt) atomicU.io.cdb_rs2_dbg  else ldq.io.cdb_rs2_value_dbg, ldq.io.cdb_rs2_value_dbg)
+  io.fu_cdb_valid         := aCdbV || ldq.io.cdb_valid
   io.ld_rob_rob_id           := ldq.io.to_rob_rob_id
   io.ld_rob_addr_dbg         := ldq.io.to_rob_addr_dbg
   io.ld_rob_rmask_dbg        := ldq.io.to_rob_rmask_dbg
@@ -168,7 +181,7 @@ class LsuTop(cfg: CpuConfig = CpuConfig()) extends Component {
   io.ld_rob_violation_rob_id := ldq.io.to_rob_violation_rob_id
 
   // ---- store_queue dispatch + outputs ----
-  stq.io.from_ds_valid        := adapter.io.to_stq_valid
+  stq.io.from_ds_valid        := adapter.io.to_stq_valid && !atomicSkip
   stq.io.from_ds_uop_rob_id   := io.uop_rob_id
   stq.io.from_ds_uop_fu_opcode := io.uop_fu_opcode
   io.st_rob_rob_id        := stq.io.to_rob_rob_id
@@ -216,6 +229,38 @@ class LsuTop(cfg: CpuConfig = CpuConfig()) extends Component {
   arb.io.store_addr  := stb.io.dmem_addr
   arb.io.store_wmask := stb.io.dmem_wmask
   arb.io.store_wdata := stb.io.dmem_wdata
+
+  // ---- RV32A AtomicUnit <-> arbiter atomic port (highest priority) ----
+  if (cfg.aExt) {
+    atomicU.io.clk := io.clk; atomicU.io.rst := io.rst; atomicU.io.backend_flush := flush
+    atomicU.io.disp_valid   := adapter.io.to_mem_rs_valid && memRs.io.from_ds_ready && io.uop_is_atomic
+    atomicU.io.disp_rob_id  := io.uop_rob_id
+    atomicU.io.disp_amo_op  := io.uop_amo_op
+    atomicU.io.disp_rd_phy  := io.uop_rd_phy
+    atomicU.io.disp_rd_arch := io.uop_rd_arch
+    atomicU.io.agu_valid := memRs.io.to_lsq_valid
+    atomicU.io.agu_data  := memRs.io.to_lsq_data
+    atomicU.io.st_commit_valid := stq.io.to_stb_valid && stb.io.from_stq_ready
+    atomicU.io.st_commit_addr  := stq.io.to_stb_addr
+    atomicU.io.go        := io.atomic_go
+    atomicU.io.go_rob_id := io.atomic_go_rob_id
+    atomicU.io.stb_empty := !stb.io.dmem_valid    // stb idle => all older stores in cache
+    arb.io.atomic_valid := atomicU.io.cache_valid
+    arb.io.atomic_addr  := atomicU.io.cache_addr
+    arb.io.atomic_rmask := atomicU.io.cache_rmask
+    arb.io.atomic_wmask := atomicU.io.cache_wmask
+    arb.io.atomic_wdata := atomicU.io.cache_wdata
+    atomicU.io.cache_ready := arb.io.atomic_ready
+    atomicU.io.cache_resp  := arb.io.atomic_resp
+    atomicU.io.cache_rdata := arb.io.atomic_rdata
+  } else {
+    arb.io.atomic_valid := False
+    arb.io.atomic_addr  := B(0, 32 bits)
+    arb.io.atomic_rmask := B(0, 4 bits)
+    arb.io.atomic_wmask := B(0, 4 bits)
+    arb.io.atomic_wdata := B(0, 32 bits)
+  }
+
   dc.io.ufp_addr  := arb.io.cache_addr
   dc.io.ufp_rmask := arb.io.cache_rmask
   dc.io.ufp_wmask := arb.io.cache_wmask

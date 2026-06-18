@@ -80,6 +80,7 @@ class BackendTop(cfg: CpuConfig = CpuConfig()) extends Component {
     val rs1_valid = Bits(1 bits); val rs2_valid = Bits(1 bits); val imm = Bits(32 bits); val rob_id = Bits(RIDX bits)
     val rd_arch = Bits(AIDX bits); val rs1_arch = Bits(AIDX bits); val rs2_arch = Bits(AIDX bits)
     val predict_taken = Bits(1 bits); val predict_target = Bits(32 bits); val ghr = Bits(GHR bits); val inst_raw = Bits(32 bits)
+    val is_atomic = Bits(1 bits); val amo_op = Bits(4 bits)   // RV32A (aExt)
   }
   def intEntry(u: Uop)  = u.rob_id ## u.rs1_phy ## u.rs1_valid ## u.rs2_phy ## u.rs2_valid ## u.rd_phy ## u.rd_arch ## u.op1_sel ## u.op2_sel ## u.imm ## u.fu_opcode
   def intmEntry(u: Uop) = u.rob_id ## u.rs1_phy ## u.rs1_valid ## u.rs2_phy ## u.rs2_valid ## u.rd_phy ## u.rd_arch ## u.fu_opcode
@@ -143,6 +144,7 @@ class BackendTop(cfg: CpuConfig = CpuConfig()) extends Component {
     rob.io.from_id_rd_phy_flat := id.io.uop_rd_phy_flat
     rob.io.from_id_rd_arch_flat := id.io.rd_arch_flat
     rob.io.from_id_is_store := id.io.is_store
+    rob.io.from_id_is_atomic := id.io.is_atomic
 
     // rrf (rob side)
     rrf.io.from_rob_valid := rob.io.to_rrf_valid
@@ -172,6 +174,7 @@ class BackendTop(cfg: CpuConfig = CpuConfig()) extends Component {
       u.imm := sl(id.io.imm_flat, i, 32); u.rob_id := robId(i)
       u.rd_arch := sl(id.io.rd_arch_flat, i, AIDX); u.rs1_arch := sl(id.io.rs1_arch_flat, i, AIDX); u.rs2_arch := sl(id.io.rs2_arch_flat, i, AIDX)
       u.predict_taken := io.ff_predict_taken(i, 1 bits); u.predict_target := ffPredTgt(i); u.ghr := ffGhr(i); u.inst_raw := ffInstRaw(i)
+      u.is_atomic := id.io.is_atomic(i, 1 bits); u.amo_op := sl(id.io.amo_op_flat, i, 4)
     }
     rob.io.from_id_rvfi_dbg_flat := Cat((0 until IDW).map(i => rvfiBits(uops(i))))
 
@@ -199,6 +202,8 @@ class BackendTop(cfg: CpuConfig = CpuConfig()) extends Component {
     lsu.io.mem_rs_entry_flat := memEntry(memUop)
     lsu.io.uop_rob_id := memUop.rob_id; lsu.io.uop_fu_opcode := memUop.fu_opcode
     lsu.io.uop_rd_arch := memUop.rd_arch; lsu.io.uop_rd_phy := memUop.rd_phy
+    lsu.io.uop_is_atomic := memUop.is_atomic(0); lsu.io.uop_amo_op := memUop.amo_op
+    lsu.io.atomic_go := rob.io.atomic_go; lsu.io.atomic_go_rob_id := rob.io.atomic_go_rob_id
 
     // ---- CDB bus (lane 0,4=int; 1=intm; 2=branch; 3=lsu) ----
     val cdbRobId = Vec(Bits(RIDX bits), CDBW); val cdbRdPhy = Vec(Bits(PIDX bits), CDBW)

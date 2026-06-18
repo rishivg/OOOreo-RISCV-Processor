@@ -10,6 +10,10 @@ import spinal.core._
   * locals. Defaults match the current committed SV core (post IF_WIDTH=4).
   */
 case class CpuConfig(
+  // ---- ISA extensions (generator-time toggles; elaborate a different netlist) ----
+  cExt: Boolean = true,   // RV32C compressed (off -> leaner/faster RV32I-aligned front-end)
+  aExt: Boolean = true,   // RV32A atomics (RTL WIP)
+
   // ---- pipeline widths ----
   ifWidth: Int = 4,   // fetch width  [IF_WIDTH]
   idWidth: Int = 2,   // decode/issue width  [ID_WIDTH]

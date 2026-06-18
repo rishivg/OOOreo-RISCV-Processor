@@ -39,7 +39,7 @@ echo "BUILD OK"
 
 echo "[3/3] run program(s): coremark_im coremark_imc"
 RC=0
-for P in coremark_im coremark_imc; do
+for P in ${PROGS:-coremark_im coremark_imc}; do
   ELF="$ROOT/testcode/$P.elf"
   echo "----- $P -----"
   ( cd "$ROOT/sim" && python3 "$ROOT/bin/generate_memory_file.py" -32 "$ELF" ) >/dev/null

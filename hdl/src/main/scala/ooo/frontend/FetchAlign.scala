@@ -51,7 +51,8 @@ class FetchAlign(cfg: CpuConfig = CpuConfig()) extends Component {
   val comp32 = Vec(Bool(), PMAX)                         // parcel p begins a 16-bit op
   val nxtPos = Vec(UInt(PIDX bits), PMAX)               // unstopped next start from p
   for (p <- 0 until PMAX) {
-    comp32(p) := parcelsVec(p)(1 downto 0) =/= B"2'b11"
+    // cExt off -> every op is 32-bit (2 parcels), so the walk uses a fixed +2 stride.
+    comp32(p) := (if (cfg.cExt) (parcelsVec(p)(1 downto 0) =/= B"2'b11") else False)
     nxtPos(p) := (U(p, PIDX bits) + Mux(comp32(p), U(1, PIDX bits), U(2, PIDX bits))).resize(PIDX bits)
   }
   def comp(i: UInt): Bool = comp32(i.resize(log2Up(PMAX) bits))
@@ -87,18 +88,25 @@ class FetchAlign(cfg: CpuConfig = CpuConfig()) extends Component {
   // span: trailing 32-bit op whose high parcel lies past the valid window
   val bIdx     = Mux(consumedU < U(PMAX, PIDX bits), consumedU, U(0, PIDX bits))
   val boundary = par(bIdx)
-  io.span := !instValid(IFW - 1) && (consumedU < nValid) &&
-             (boundary(1 downto 0) === B"2'b11") &&
-             ((consumedU.resize(PIDX + 1 bits) + 1) >= nValid.resize(PIDX + 1 bits))
+  io.span := (if (cfg.cExt)
+                (!instValid(IFW - 1) && (consumedU < nValid) &&
+                 (boundary(1 downto 0) === B"2'b11") &&
+                 ((consumedU.resize(PIDX + 1 bits) + 1) >= nValid.resize(PIDX + 1 bits)))
+              else False)
   io.span_lo := boundary
   io.span_pc := (pcU + (consumedU << 1).resize(32 bits)).asBits
 
-  // expand each extracted instruction
+  // expand each extracted instruction (cExt off -> raw is already the 32-bit instr,
+  // so no Decompressor is instantiated at all)
   val instVec = Vec(Bits(32 bits), IFW)
-  for (gi <- 0 until IFW) {
-    val d = new Decompressor
-    d.io.inst_in := raw(gi)
-    instVec(gi) := d.io.inst_out      // d.io.is_compressed unused (inst_comp comes from compS)
+  if (cfg.cExt) {
+    for (gi <- 0 until IFW) {
+      val d = new Decompressor
+      d.io.inst_in := raw(gi)
+      instVec(gi) := d.io.inst_out    // d.io.is_compressed unused (inst_comp comes from compS)
+    }
+  } else {
+    for (gi <- 0 until IFW) instVec(gi) := raw(gi)
   }
 
   io.inst       := instVec.asBits

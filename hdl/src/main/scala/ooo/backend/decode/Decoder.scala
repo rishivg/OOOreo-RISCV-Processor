@@ -18,6 +18,12 @@ object DecodeConsts {
   def OP_STORE = B"7'b0100011"
   def OP_IMM   = B"7'b0010011"
   def OP_REG   = B"7'b0110011"
+  def OP_AMO   = B"7'b0101111"   // RV32A (gated by cfg.aExt)
+
+  // ---- AMO op codes (amo_op, 4 bits) -- AtomicUnit decodes these ----
+  val AMO_LR = 0; val AMO_SC = 1; val AMO_SWAP = 2; val AMO_ADD = 3
+  val AMO_XOR = 4; val AMO_AND = 5; val AMO_OR = 6
+  val AMO_MIN = 7; val AMO_MAX = 8; val AMO_MINU = 9; val AMO_MAXU = 10
 
   // ---- arith funct3 (rv32i_types) ----
   def F3_ADD  = B"3'b000"
@@ -93,24 +99,33 @@ class Decoder(cfg: CpuConfig = CpuConfig()) extends Component {
     val rs1_arch  = out Bits (cfg.arfIdx bits)
     val rs2_arch  = out Bits (cfg.arfIdx bits)
     val is_store  = out Bool ()
+    val is_atomic = out Bool ()          // RV32A: this uop is an AMO/LR/SC (aExt only)
+    val amo_op    = out Bits (4 bits)    // RV32A: AMO_* code (aExt only)
   }
   noIoPrefix()
 
   val opcode = io.inst(6 downto 0)
   val funct3 = io.inst(14 downto 12)
   val funct7 = io.inst(31 downto 25)
+  val funct5 = io.inst(31 downto 27)   // AMO op selector
 
   // membership helper mirroring SV `opcode inside {...}`
   def isOneOf(ops: Bits*): Bool = ops.map(opcode === _).reduce(_ || _)
 
+  // RV32A: an AMO/LR/SC reads rs1 (base) + rs2 (operand) and writes rd. Constant
+  // False when aExt is off, so the rd_en/rs1/rs2 muxes below reduce bit-identically.
+  val amoEn = if (cfg.aExt) (opcode === OP_AMO) else False
+
   // ---- register fields (concurrent, mirror the SV continuous assigns) ----
-  io.rd_en := isOneOf(OP_LUI, OP_AUIPC, OP_IMM, OP_REG, OP_JAL, OP_JALR, OP_LOAD)
+  io.rd_en := isOneOf(OP_LUI, OP_AUIPC, OP_IMM, OP_REG, OP_JAL, OP_JALR, OP_LOAD) || amoEn
   io.rd_arch  := Mux(io.rd_en, io.inst(11 downto 7), B(0, cfg.arfIdx bits))
-  io.rs1_arch := Mux(isOneOf(OP_IMM, OP_REG, OP_JALR, OP_BR, OP_LOAD, OP_STORE),
+  io.rs1_arch := Mux(isOneOf(OP_IMM, OP_REG, OP_JALR, OP_BR, OP_LOAD, OP_STORE) || amoEn,
                      io.inst(19 downto 15), B(0, cfg.arfIdx bits))
-  io.rs2_arch := Mux(isOneOf(OP_REG, OP_BR, OP_STORE),
+  io.rs2_arch := Mux(isOneOf(OP_REG, OP_BR, OP_STORE) || amoEn,
                      io.inst(24 downto 20), B(0, cfg.arfIdx bits))
   io.is_store := opcode === OP_STORE
+  io.is_atomic := amoEn
+  io.amo_op := B(0, 4 bits)
 
   // ---- rs_type / fu_type / fu_opcode / op selects ----
   io.rs_type   := RS_INT
@@ -176,6 +191,31 @@ class Decoder(cfg: CpuConfig = CpuConfig()) extends Component {
       }
     }
     default { /* ignore -- keep defaults */ }
+  }
+
+  // RV32A atomics (opcode 0x2F). Routed to the mem RS / AGU like a word load (so the
+  // AGU computes eff-addr = rs1+0 with a word mask); the AtomicUnit performs the RMW
+  // non-speculatively at the ROB head and injects the result on the LSU CDB lane.
+  if (cfg.aExt) {
+    when(opcode === OP_AMO) {
+      io.rs_type   := RS_MEM
+      io.fu_type   := FU_AGU
+      io.fu_opcode := B"4'b0010"        // MEM_LW: word addr + mask=1111
+      switch(funct5) {
+        is(B"5'b00010") { io.amo_op := B(AMO_LR,   4 bits) }
+        is(B"5'b00011") { io.amo_op := B(AMO_SC,   4 bits) }
+        is(B"5'b00001") { io.amo_op := B(AMO_SWAP, 4 bits) }
+        is(B"5'b00000") { io.amo_op := B(AMO_ADD,  4 bits) }
+        is(B"5'b00100") { io.amo_op := B(AMO_XOR,  4 bits) }
+        is(B"5'b01100") { io.amo_op := B(AMO_AND,  4 bits) }
+        is(B"5'b01000") { io.amo_op := B(AMO_OR,   4 bits) }
+        is(B"5'b10000") { io.amo_op := B(AMO_MIN,  4 bits) }
+        is(B"5'b10100") { io.amo_op := B(AMO_MAX,  4 bits) }
+        is(B"5'b11000") { io.amo_op := B(AMO_MINU, 4 bits) }
+        is(B"5'b11100") { io.amo_op := B(AMO_MAXU, 4 bits) }
+        default         { io.amo_op := B(AMO_ADD,  4 bits) }
+      }
+    }
   }
 
   // ---- immediates (sign-extend mirrors the SV {{N{inst[31]}}, ...} concats) ----

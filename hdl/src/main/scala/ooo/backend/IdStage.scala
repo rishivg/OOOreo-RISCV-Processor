@@ -42,6 +42,8 @@ class IdStage(cfg: CpuConfig = CpuConfig()) extends Component {
     val rs1_arch_flat  = out Bits (IDW * AIDX bits)
     val rs2_arch_flat  = out Bits (IDW * AIDX bits)
     val is_store       = out Bits (IDW bits)
+    val is_atomic      = out Bits (IDW bits)        // RV32A (aExt)
+    val amo_op_flat    = out Bits (IDW * 4 bits)    // RV32A (aExt)
     // control
     val uops_valid     = out Bits (IDW bits)
     val uop_rd_phy_flat = out Bits (IDW * PIDX bits)
@@ -58,6 +60,7 @@ class IdStage(cfg: CpuConfig = CpuConfig()) extends Component {
   val op1 = Vec(Bits(1 bits), IDW); val op2 = Vec(Bits(1 bits), IDW); val imm = Vec(Bits(32 bits), IDW)
   val rdArch = Vec(Bits(AIDX bits), IDW); val rs1Arch = Vec(Bits(AIDX bits), IDW); val rs2Arch = Vec(Bits(AIDX bits), IDW)
   val isStore = Vec(Bool(), IDW)
+  val isAtomic = Vec(Bool(), IDW); val amoOp = Vec(Bits(4 bits), IDW)
   for (i <- 0 until IDW) {
     val dec = new Decoder(cfg)
     dec.io.inst := io.from_fifo_inst_flat(i * 32, 32 bits)
@@ -65,11 +68,13 @@ class IdStage(cfg: CpuConfig = CpuConfig()) extends Component {
     op1(i) := dec.io.op1_sel; op2(i) := dec.io.op2_sel; imm(i) := dec.io.imm
     rdArch(i) := dec.io.rd_arch; rs1Arch(i) := dec.io.rs1_arch; rs2Arch(i) := dec.io.rs2_arch
     isStore(i) := dec.io.is_store
+    isAtomic(i) := dec.io.is_atomic; amoOp(i) := dec.io.amo_op
   }
   io.rs_type_flat := rsType.asBits; io.fu_type_flat := fuType.asBits; io.fu_opcode_flat := fuOp.asBits
   io.op1_sel := op1.asBits; io.op2_sel := op2.asBits; io.imm_flat := imm.asBits
   io.rd_arch_flat := rdArch.asBits; io.rs1_arch_flat := rs1Arch.asBits; io.rs2_arch_flat := rs2Arch.asBits
   io.is_store := isStore.asBits
+  io.is_atomic := isAtomic.asBits; io.amo_op_flat := amoOp.asBits
 
   def rawValid(i: Int) = io.from_fifo_valid_slots(i)
 
@@ -90,7 +95,13 @@ class IdStage(cfg: CpuConfig = CpuConfig()) extends Component {
     // store-commits-via-STQ-before-mispredict-squash hang), br0+br1, and mem0+mem1.
     // The br0+load1 case needs the ROB redirect-priority fix (older branch wins over
     // a younger load violation) -- see rob.sv backend_redirect_pc.
-    val store1 = isMem(1) && isStore(1)
+    // RV32A: br0+atomic1 must ALSO serialize (treat a slot1-atomic like a slot1-store).
+    // An atomic executes its irreversible RMW non-speculatively at the ROB head, so it
+    // must never be the younger slot behind a branch -- otherwise an older mispredicting
+    // branch would squash an already-committed memory effect AND steal the atomic's
+    // redirect. isAtomic(1) is constant-False when !aExt -> store1 reduces bit-identically.
+    // (load/store0 + atomic1 and atomic0 + mem1 are already caught by isMem(0)&&isMem(1).)
+    val store1 = isMem(1) && (isStore(1) || isAtomic(1))
     val hazard = (isBr(0) && (isBr(1) || store1)) || (isMem(0) && isMem(1))
     val advance = io.to_fl_ready && io.to_rob_ready && io.nxt_ready
 
