@@ -1,6 +1,7 @@
 {
     "clock"       : 2780,
     "c_ext"       : false,
+    "a_ext"       : true,
     "f_ext"       : false,
     "bmem_0_on_x" : 1,
     "dw_ip"       : ["DW_div_seq"],

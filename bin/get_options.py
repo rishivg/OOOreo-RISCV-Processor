@@ -14,6 +14,8 @@ with open("options.json") as f:
 
 if sys.argv[1] == "arch":
     retval = "rv32im"
+    if j.get("a_ext", False):
+        retval += 'a'
     if j["f_ext"]:
         retval += 'f'
     if j["c_ext"]:
