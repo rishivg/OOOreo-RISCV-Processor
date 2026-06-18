@@ -1,5 +1,5 @@
 # Generate synth/Makefile for the SpinalHDL core. The core is emitted directly as
-# Verilog (hdl_spinal/gen/cpu.v) -- no SV, no sv2v, no package headers. Synthesis
+# Verilog (hdl/gen/cpu.v) -- no SV, no sv2v, no package headers. Synthesis
 # reads cpu.v + the SRAM macros + the DW_div_seq divider IP (hvl/common/dw_mock.sv).
 # (The PPA/PD4 docker flow targets are appended to synth/Makefile separately.)
 with open("Makefile", "w") as f:
@@ -12,8 +12,8 @@ with open("Makefile", "w") as f:
     f.write("\t@rm -rf work/src/*\n")
     f.write("\t@mkdir -p work/src/sram\n")
     f.write("\t@echo \"Generating SpinalHDL core -> gen/cpu.v...\"\n")
-    f.write("\t@cd ../hdl_spinal && sbt -batch \"runMain ooo.Generate\"\n")
-    f.write("\t@cp ../hdl_spinal/gen/cpu.v work/src/\n")
+    f.write("\t@cd ../hdl && sbt -batch \"runMain ooo.Generate\"\n")
+    f.write("\t@cp ../hdl/gen/cpu.v work/src/\n")
     f.write("\t@cp ../hvl/common/dw_mock.sv work/src/\n") # DW_div_seq divider IP
     f.write("\t@if [ -d \"../sram/output\" ]; then cp -r ../sram/output/* work/src/sram/; fi\n")
     f.write("\t@if command -v yosys >/dev/null 2>&1; then \\\n")

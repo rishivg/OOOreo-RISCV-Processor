@@ -8,9 +8,9 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-echo "[1/3] generate SpinalHDL core -> hdl_spinal/gen/cpu.v (gen: ${CPU_GEN:-ooo.Generate})"
-( cd "$ROOT/hdl_spinal" && sbt -batch "runMain ${CPU_GEN:-ooo.Generate}" ) || { echo "GEN FAILED"; exit 1; }
-CPU="$ROOT/hdl_spinal/gen/cpu.v"
+echo "[1/3] generate SpinalHDL core -> hdl/gen/cpu.v (gen: ${CPU_GEN:-ooo.Generate})"
+( cd "$ROOT/hdl" && sbt -batch "runMain ${CPU_GEN:-ooo.Generate}" ) || { echo "GEN FAILED"; exit 1; }
+CPU="$ROOT/hdl/gen/cpu.v"
 [ -f "$CPU" ] || { echo "missing $CPU"; exit 1; }
 
 echo "[2/3] verilator build"

@@ -10,14 +10,21 @@ EXIT_CODE=0
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Initialize Report JSON
+mkdir -p reports
 echo "{" > reports/lint_report.json
 echo "  \"timestamp\": \"$TIMESTAMP\"," >> reports/lint_report.json
 echo "  \"top_module\": \"$TOP_MODULE\"," >> reports/lint_report.json
 echo "  \"results\": {" >> reports/lint_report.json
 
-# Define paths and sources
-PKG_SRCS="../pkg/types.sv"
-HDL_SRCS=$(find ../hdl -name '*.sv')
+# Define paths and sources.
+# The core is generated from the SpinalHDL project in ../hdl -> ../hdl/gen/cpu.v
+# (plain Verilog, self-contained: no SV package, no interfaces). We lint that
+# netlist plus the external blackbox models it instantiates (SRAM macros + the
+# DW_div_seq divider stub).
+echo "[lint] regenerating ../hdl/gen/cpu.v ..."
+( cd ../hdl && sbt -batch "runMain ooo.Generate" ) || { echo "SpinalHDL generate FAILED"; exit 1; }
+PKG_SRCS=""
+HDL_SRCS="../hdl/gen/cpu.v"
 SRAM_SRCS=$(find ../sram/output -name '*.v')
 STUB_SRCS="dw_stubs.v"
 
@@ -34,7 +41,7 @@ if [ "$TOOL" = "verilator" ] || [ "$TOOL" = "all" ]; then
     echo "----------------------------------------"
 
     # Run Verilator
-    if verilator $FLAGS $PKG_SRCS $HDL_SRCS $SRAM_SRCS $STUB_SRCS -I../hdl -I../pkg > "reports/verilator_${TOP_MODULE}.log" 2>&1; then
+    if verilator $FLAGS $PKG_SRCS $HDL_SRCS $SRAM_SRCS $STUB_SRCS > "reports/verilator_${TOP_MODULE}.log" 2>&1; then
         # Move the stats file to the reports directory
         STATS_SRC="obj_dir/V${TOP_MODULE}__stats.txt"
         if [ -f "$STATS_SRC" ]; then mv "$STATS_SRC" "$STATS_FILE"; fi
@@ -76,7 +83,7 @@ if [ "$TOOL" = "icarus" ] || [ "$TOOL" = "all" ]; then
         echo "----------------------------------------"
         # -g2012 for SystemVerilog support
         # -t null means just check syntax, don't build simulation executable
-        if iverilog -g2012 -t null -Wall -I../hdl -I../pkg $PKG_SRCS $HDL_SRCS $SRAM_SRCS $STUB_SRCS; then
+        if iverilog -g2012 -t null -Wall $PKG_SRCS $HDL_SRCS $SRAM_SRCS $STUB_SRCS; then
              echo " Icarus Lint Passed."
              echo "    \"icarus\": \"passed\"," >> reports/lint_report.json
         else
@@ -107,7 +114,7 @@ if [ "$TOOL" = "yosys" ] || [ "$TOOL" = "all" ]; then
         mkdir -p output
         
         # Note: We rely on yosys to read the SV source. Yosys support for SV is partial.
-        if yosys -p "read_verilog -sv -I../hdl -I../pkg $PKG_SRCS $HDL_SRCS $SRAM_SRCS $STUB_SRCS; hierarchy -check -top $TOP_MODULE; show -format dot -prefix reports/hierarchy_${TOP_MODULE}" > reports/yosys_${TOP_MODULE}.log 2>&1; then
+        if yosys -p "read_verilog -sv $PKG_SRCS $HDL_SRCS $SRAM_SRCS $STUB_SRCS; hierarchy -check -top $TOP_MODULE; show -format dot -prefix reports/hierarchy_${TOP_MODULE}" > reports/yosys_${TOP_MODULE}.log 2>&1; then
              echo " Yosys Hierarchy Verified."
              echo " Dependency Graph: reports/hierarchy_${TOP_MODULE}.dot"
              echo "    \"yosys\": \"passed\"," >> reports/lint_report.json

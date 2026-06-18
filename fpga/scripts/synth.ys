@@ -1,7 +1,16 @@
-# Yosys Synthesis Script
+# Yosys Synthesis Script (Xilinx 7-series, open-source flow)
+# Run from the fpga/ directory: yosys -s scripts/synth.ys
 
-# 1. Read the transpiled Verilog file (from sv2v)
+# 1. Read the SpinalHDL-generated core (plain Verilog) + the external modules it
+#    instantiates: the SRAM behavioral models (inferred to BRAM) and the
+#    DW_div_seq divider. build/cpu.v is copied from ../hdl/gen/cpu.v by the
+#    Makefile `gen` step.
 read_verilog build/cpu.v
+read_verilog -sv ../hvl/common/dw_mock.sv
+read_verilog ../sram/output/icache_data_array/icache_data_array.v
+read_verilog ../sram/output/icache_tag_array/icache_tag_array.v
+read_verilog ../sram/output/dcache_data_array/dcache_data_array.v
+read_verilog ../sram/output/dcache_tag_array/dcache_tag_array.v
 
 # 2. Synthesis for Xilinx 7 Series
 # -flatten: improves optimization across boundaries

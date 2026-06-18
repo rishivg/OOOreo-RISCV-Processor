@@ -7,12 +7,19 @@ read_verilog -sv  synth/opensource/pnr/macro_wrappers.v
 read_verilog -lib synth/opensource/dw_div_seq_bb.v
 read_verilog synth/opensource/cpu.v
 hierarchy -top cpu
-# NOTE: no -flatten, matching the trusted map_docker.ys baseline. With -flatten
-# yosys collapses the dcache 4-way read mux and drops 3 of the 4 dcache way
-# arrays -> structurally diverges from the RVFI-verified design. OpenROAD
-# flattens logical hierarchy at link/DB-build time regardless, so -flatten here
-# buys nothing and only risks changing the logic.
+# NOTE: no -flatten (keeps the fast per-module abc path; flatten makes abc grind the
+# giant uBTB mux trees globally). OpenROAD flattens at DB-build time anyway.
 synth -top cpu
+# Drop the verification-only RVFI debug cone -- HIERARCHICAL prune (no flatten).
+# rvfi_flat is a retirement-trace output (drives the riscv-formal monitor in sim,
+# dangling in synthesis) that threads cpu <- backend_top_spinal <- rob_spinal.
+# Deleting the port at each level + opt_clean removes the ~20k-flop rvfiArr debug
+# state a real chip would not tape out, giving the TRUE functional-core area/power.
+# pc_rdata survives (it also feeds backend_redirect_pc for violation recovery).
+delete cpu/w:rvfi_flat
+delete backend_top_spinal/w:rvfi_itf_flat
+delete rob_spinal/w:rvfi_itf_flat
+opt_clean -purge
 # Use the Nangate45 liberty shipped in the OpenROAD docker (this runs in that
 # image) so no multi-MB .lib needs to live in the repo.
 dfflibmap -liberty /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib

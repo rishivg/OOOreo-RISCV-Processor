@@ -9,8 +9,8 @@ synth:
 	@rm -rf work/src/*
 	@mkdir -p work/src/sram
 	@echo "Generating SpinalHDL core -> gen/cpu.v..."
-	@cd ../hdl_spinal && sbt -batch "runMain ooo.Generate"
-	@cp ../hdl_spinal/gen/cpu.v work/src/
+	@cd ../hdl && sbt -batch "runMain ooo.Generate"
+	@cp ../hdl/gen/cpu.v work/src/
 	@cp ../hvl/common/dw_mock.sv work/src/
 	@if [ -d "../sram/output" ]; then cp -r ../sram/output/* work/src/sram/; fi
 	@if command -v yosys >/dev/null 2>&1; then \

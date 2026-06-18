@@ -1,9 +1,13 @@
 # F4PGA / Open Source FPGA Toolchain
-# Tools required: 
-# - sv2v (SystemVerilog to Verilog converter)
+# Tools required:
+# - sbt + SpinalHDL (core generation -> ../hdl/gen/cpu.v, plain Verilog)
 # - yosys (Synthesis)
 # - nextpnr-xilinx (Place and Route)
 # - openfpgaloader (Bitstream loading - optional)
+#
+# The OOOreo core is SpinalHDL now and emits Verilog directly, so there is no
+# sv2v step: we generate ../hdl/gen/cpu.v and feed it (plus the SRAM behavioral
+# models and the DW_div_seq divider) straight to yosys.
 
 # Project Configuration
 TOP_MODULE := cpu
@@ -11,35 +15,27 @@ PART       := xc7z020
 BUILD_DIR  := build
 SCRIPTS_DIR := scripts
 
-# Sources handling
-# Find all SystemVerilog files, excluding headers inside hvl or testcode if any
-PKG_SRCS   := $(shell find ../pkg -name '*.sv')
-HDL_SRCS   := $(shell find ../hdl -name '*.sv')
+# Generated core + the external modules it instantiates (SRAM macros + divider).
+CPU_V      := ../hdl/gen/cpu.v
 SRAM_SRCS  := $(shell find ../sram/output -name '*.v')
+DIV_SRC    := ../hvl/common/dw_mock.sv
 
-# Combined source list for sv2v
-ALL_SRCS   := $(PKG_SRCS) $(HDL_SRCS) $(SRAM_SRCS)
-
-# Tools
-SV2V       := ./tools/sv2v-Linux/sv2v
-
-.PHONY: all sv2v synth pnr clean
+.PHONY: all gen synth pnr clean
 
 all: bitstream
 
 # -----------------------------------------------------------------------------
-# 1. Transpilation (SystemVerilog -> Verilog 2005)
+# 1. Core generation (SpinalHDL -> Verilog)
 # -----------------------------------------------------------------------------
-sv2v: $(BUILD_DIR)/$(TOP_MODULE).v
+gen: $(BUILD_DIR)/$(TOP_MODULE).v
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-$(BUILD_DIR)/$(TOP_MODULE).v: $(ALL_SRCS) | $(BUILD_DIR)
-	@echo "[FLOW] Converting SystemVerilog to Verilog using sv2v..."
-	# -I includes directories for Headers
-	# We transpile everything into a single Verilog file for Yosys
-	$(SV2V) -I../pkg -I../hdl --top=$(TOP_MODULE) $(ALL_SRCS) > $@
+$(BUILD_DIR)/$(TOP_MODULE).v: | $(BUILD_DIR)
+	@echo "[FLOW] Generating SpinalHDL core -> $(CPU_V) ..."
+	cd ../hdl && sbt -batch "runMain ooo.Generate"
+	cp $(CPU_V) $@
 
 # -----------------------------------------------------------------------------
 # 2. Synthesis (Yosys)

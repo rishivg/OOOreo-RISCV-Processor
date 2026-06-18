@@ -8,3 +8,13 @@ __pycache__/
 
 # NFS lock-file artifacts
 .nfs*
+
+# sbt boot scratch
+hdl/project/.boot/
+hdl/project/.sbtboot/
+# tool build/scratch dirs
+lint/obj_dir/
+formal/build/
+# sim validation logs
+sim/validate_*.log
+sim/coremark_*.log

@@ -1,8 +1,10 @@
 SHELL=/bin/bash -o pipefail
 .SHELLFLAGS += -e
 
-PKG_SRCS  := $(PWD)/../pkg/types.sv
-HDL_SRCS  := $(shell find $(PWD)/../hdl -name '*.sv')
+# The core is generated from the SpinalHDL project in ../hdl (run_lint.sh runs
+# `sbt runMain ooo.Generate` -> ../hdl/gen/cpu.v before linting). These vars are
+# documentation; the actual source list lives in run_lint.sh.
+HDL_SRCS  := $(PWD)/../hdl/gen/cpu.v
 SRAM_SRCS := $(shell find $(PWD)/../sram/output -name '*.v')
 STUB_SRCS := $(PWD)/dw_stubs.v
 
