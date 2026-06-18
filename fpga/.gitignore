@@ -1,2 +1,5 @@
 # Generated build products (sv2v output, bitstream intermediates, etc.)
 build/
+
+reports/
+tools/

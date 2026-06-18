@@ -6,6 +6,7 @@
 #    DW_div_seq divider. build/cpu.v is copied from ../hdl/gen/cpu.v by the
 #    Makefile `gen` step.
 read_verilog build/cpu.v
+read_verilog rtl/cpu_impl_top.v
 read_verilog -sv ../hvl/common/dw_mock.sv
 read_verilog ../sram/output/icache_data_array/icache_data_array.v
 read_verilog ../sram/output/icache_tag_array/icache_tag_array.v
@@ -15,10 +16,13 @@ read_verilog ../sram/output/dcache_tag_array/dcache_tag_array.v
 # 2. Synthesis for Xilinx 7 Series
 # -flatten: improves optimization across boundaries
 # -abc9: uses improved mapping
-synth_xilinx -flatten -abc9 -top cpu -family xc7
+# @SYNTH_DSP_OPT@ is replaced by the Makefile; set USE_DSP=0 to add -nodsp.
+synth_xilinx -flatten -abc9 -top cpu_impl_top -family xc7 @SYNTH_DSP_OPT@
 
 # 3. Optimization and Check
 opt_clean -purge
+check
+stat -tech xilinx
 
 # 4. Write Output in JSON format (for nextpnr)
-write_json build/cpu.json
+write_json build/cpu_impl_top-@BUILD_VARIANT@.json

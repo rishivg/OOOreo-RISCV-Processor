@@ -18,3 +18,11 @@ formal/build/
 # sim validation logs
 sim/validate_*.log
 sim/coremark_*.log
+
+# FPGA open toolchain (multi-GB; reinstall via fpga/README.md)
+tools/oss-cad-suite/
+tools/nextpnr-xilinx*/
+tools/*.bin
+tools/cmake*/
+tools/boost*/
+tools/[Ee]igen*/
