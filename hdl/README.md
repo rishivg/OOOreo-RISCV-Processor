@@ -1,4 +1,4 @@
-# hdl_spinal — the OOOreo OOO core (SpinalHDL)
+# hdl — the OOOreo OOO core (SpinalHDL)
 
 The OOOreo RV32IMC out-of-order core, written in SpinalHDL, with issue/fetch
 width and all resource sizes as **generator parameters** (`CpuConfig`). This is
@@ -21,7 +21,7 @@ bit-for-bit before the SV core was deleted.
 ## Layout
 
 ```
-hdl_spinal/
+hdl/
   build.sbt, project/             SpinalHDL 1.12 sbt project
   src/main/scala/ooo/
     Config.scala                  CpuConfig generator params (widths, depths, ...)

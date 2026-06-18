@@ -187,7 +187,12 @@ class Rob(cfg: CpuConfig = CpuConfig()) extends Component {
     val branchFlush  = dequeue && io.from_cb_miss_predict
     val backendFlush = branchFlush || violFlush
     io.backend_flush := backendFlush
-    io.backend_redirect_pc := Mux(violFlush, rvfiArr(headIdxU(violSlot)).pc_rdata, io.from_cb_target_address)
+    // Oldest flush cause wins the redirect. Previously violFlush unconditionally won,
+    // which was correct only because br-older-than-violating-load never shared a row
+    // (id_stage serialized br0+mem1). With br0+load1 now allowed, an older branch must
+    // redirect to its target rather than the younger squashed load's PC.
+    val brWins = branchFlush && (!violFlush || (brSlot < violSlot))
+    io.backend_redirect_pc := Mux(brWins, io.from_cb_target_address, rvfiArr(headIdxU(violSlot)).pc_rdata)
 
     // ---- slot-granular commit ----
     val commitInstr = Vec(Bool(), IDW)

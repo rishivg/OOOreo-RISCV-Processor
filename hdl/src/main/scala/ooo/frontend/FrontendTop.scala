@@ -60,11 +60,6 @@ class FrontendTop(cfg: CpuConfig = CpuConfig()) extends Component {
   }
   noIoPrefix()
 
-  def isCtrl(inst: Bits): Bool = {
-    val op = inst(6 downto 0)
-    (op === B"7'b1100011") || (op === B"7'b1101111") || (op === B"7'b1100111")
-  }
-
   val domain = ClockDomain(clock = io.clk, reset = io.rst,
     config = ClockDomainConfig(resetActiveLevel = HIGH, resetKind = SYNC))
 
@@ -119,6 +114,39 @@ class FrontendTop(cfg: CpuConfig = CpuConfig()) extends Component {
     val faInstValid = fa.io.inst_valid
     val faSpan = fa.io.span; val faSpanLo = fa.io.span_lo; val faSpanPc = fa.io.span_pc; val faNextPc = fa.io.next_pc
 
+    // ---- raw control predecode (keeps the decompressor OFF the pc_next loop) ----
+    // Classify is_ctrl/is_call/is_ret directly from the raw (compressed-or-32b)
+    // encoding. Bit-exact with isCtrl(decompressed) and the RAS call/ret rules on
+    // the expanded form, so prediction/redirect no longer depends on the (heavy)
+    // decompressor -- it now only feeds the FIFO/decode payload.
+    val faRaw   = fa.io.inst_raw.subdivideIn(IFW slices)
+    val ctrlRaw = Vec(Bool(), IFW); val callRaw = Vec(Bool(), IFW); val retRaw = Vec(Bool(), IFW)
+    for (i <- 0 until IFW) {
+      val R = faRaw(i); val comp = fa.io.inst_comp(i)
+      // 32-bit form
+      val op32 = R(6 downto 0); val rd32 = R(11 downto 7); val rs1_32 = R(19 downto 15)
+      val linkRd32 = (rd32 === 1) || (rd32 === 5); val linkRs1_32 = (rs1_32 === 1) || (rs1_32 === 5)
+      val jal32 = op32 === B"7'b1101111"; val jalr32 = op32 === B"7'b1100111"; val br32 = op32 === B"7'b1100011"
+      val ctrl32 = br32 || jal32 || jalr32
+      val call32 = (jal32 || jalr32) && linkRd32
+      val ret32  = jalr32 && linkRs1_32 && !linkRd32
+      // compressed form (low 16b; the raw upper half is 0 on compressed slots)
+      val q = R(1 downto 0); val f3 = R(15 downto 13); val i12 = R(12)
+      val rs2h = R(6 downto 2); val rs1h = R(11 downto 7)
+      val cJal  = (q === B"2'b01") && (f3 === B"3'b001")                                   // c.jal  -> jal x1
+      val cJ    = (q === B"2'b01") && (f3 === B"3'b101")                                   // c.j    -> jal x0
+      val cBeqz = (q === B"2'b01") && (f3 === B"3'b110")                                   // c.beqz
+      val cBnez = (q === B"2'b01") && (f3 === B"3'b111")                                   // c.bnez
+      val cJr   = (q === B"2'b10") && (f3 === B"3'b100") && !i12 && (rs2h === 0)           // c.jr   -> jalr x0,rs1
+      val cJalr = (q === B"2'b10") && (f3 === B"3'b100") && i12 && (rs2h === 0) && (rs1h =/= 0) // c.jalr -> jalr x1,rs1
+      val ctrlC = cJal || cJ || cBeqz || cBnez || cJr || cJalr
+      val callC = cJal || cJalr
+      val retC  = cJr && ((rs1h === 1) || (rs1h === 5))
+      ctrlRaw(i) := Mux(comp, ctrlC, ctrl32)
+      callRaw(i) := Mux(comp, callC, call32)
+      retRaw(i)  := Mux(comp, retC, ret32)
+    }
+
     // --- predictors ---
     val predictTakenGshare = Bits(IFW bits)
     val predictTargetUbtb = Bits(IFW * 32 bits); val predictTakenUbtb = Bits(IFW bits)
@@ -132,7 +160,7 @@ class FrontendTop(cfg: CpuConfig = CpuConfig()) extends Component {
     val ptgtVec = predictTarget.subdivideIn(IFW slices)
     val effPt = Vec(Bool(), IFW); val effPtgt = Vec(Bits(32 bits), IFW); val isC = Vec(Bool(), IFW)
     for (i <- 0 until IFW) {
-      isC(i) := isCtrl(faInst(i))
+      isC(i) := ctrlRaw(i)
       effPt(i) := isC(i) && predictTaken(i)
       effPtgt(i) := Mux(isC(i), predictTarget(i * 32, 32 bits), faSeqNext(i))
     }
@@ -158,7 +186,7 @@ class FrontendTop(cfg: CpuConfig = CpuConfig()) extends Component {
     val pktValid = Vec(Bool(), IFW)
     for (i <- 0 until IFW) pktValid(i) := faInstValid(i) && !(ptEn && (U(i, IFIDX bits) > ptIdx))
     val specBrValid = Vec(Bool(), IFW)
-    for (i <- 0 until IFW) specBrValid(i) := pktValid(i) && isCtrl(faInst(i))
+    for (i <- 0 until IFW) specBrValid(i) := pktValid(i) && ctrlRaw(i)
 
     // TAGE
     val tage = new Tage(cfg)
@@ -182,7 +210,8 @@ class FrontendTop(cfg: CpuConfig = CpuConfig()) extends Component {
     // RAS
     val ras = new Ras(cfg)
     ras.io.clk := io.clk; ras.io.rst := io.rst; ras.io.flush := io.backend_flush; ras.io.fetch_fire := fetchFire
-    ras.io.inst_pc := faInstPc; ras.io.seq_next := fa.io.seq_next; ras.io.inst_valid := faInstValid; ras.io.insts := fa.io.inst
+    ras.io.inst_pc := faInstPc; ras.io.seq_next := fa.io.seq_next; ras.io.inst_valid := faInstValid
+    ras.io.is_call := callRaw.asBits; ras.io.is_ret := retRaw.asBits
     ras.io.predict_taken_in := predictTakenUbtb; ras.io.predict_target_in := predictTargetUbtb
     ras.io.from_cb_update_en := io.from_cb_update_en; ras.io.from_cb_pc := io.from_cb_pc
     ras.io.from_cb_is_call := io.from_cb_is_call; ras.io.from_cb_is_ret := io.from_cb_is_ret

@@ -63,6 +63,23 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     }
     Vec(bits).asBits
   }
+  // Incremental folded-history update: given the current fold `ch` (width W) of
+  // GHR[0..L), shifting in one new bit `bin` at GHR[0] (and dropping GHR[L-1]==`bout`
+  // out of the L-window) gives ch' = rol(ch,1) ^ {bin@0} ^ {bout@(L%W)}. Lets the
+  // predict path read a fold REGISTER instead of XOR-folding L history bits live.
+  def rolXor(ch: Bits, L: Int, bin: Bool, bout: Bool): Bits = {
+    val W = ch.getWidth
+    val rolled = ch(W - 2 downto 0) ## ch(W - 1)                 // rotate-left by 1
+    val inj = Vec(Bool(), W)
+    for (i <- 0 until W) {
+      if (i == 0 && i == (L % W)) inj(i) := bin ^ bout
+      else if (i == 0)            inj(i) := bin
+      else if (i == (L % W))      inj(i) := bout
+      else                        inj(i) := False
+    }
+    rolled ^ inj.asBits
+  }
+
   // PC combined with a history fold + RVC de-alias (pc[1] into the LSB).
   def idxComb(pc: Bits, fidx: Bits): Bits = (pc(TIDX + 1 downto 3) ## (pc(2) ^ pc(1))) ^ fidx
   def tagComb(pc: Bits, ftag: Bits): Bits =
@@ -85,6 +102,10 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     // ---- state ----
     val ghrSpec   = RegInit(B(0, GHR bits))
     val ghrCommit = RegInit(B(0, GHR bits))
+    // folded-history registers (spec path): invariant fidxSpec(t)==foldGen(ghrSpec,HIST(t),TIDX)
+    // etc. Init 0 == foldGen(0). Maintained incrementally in lockstep with ghrSpec.
+    val fidxSpec = Array.tabulate(NUM)(_ => RegInit(B(0, TIDX bits)))
+    val ftagSpec = Array.tabulate(NUM)(_ => RegInit(B(0, TAGB bits)))
     val useAltOnNa = RegInit(U(8, 4 bits))
     val bimodal = Vec.fill(PHTD)(RegInit(U(1, 2 bits)))                 // base predictor (init 01; reset kept -- stripping it perturbs warm-up IPC)
     // tagged tables self-correct (a stale tag just mispredicts, then is overwritten)
@@ -93,17 +114,28 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
 
     io.ghr_snapshot := ghrSpec
 
-    // ---- speculative history shift across fetched branches ----
+    // ---- speculative history shift across fetched branches, plus the matching
+    //      incremental fold update (bout = the GHR bit leaving each component's
+    //      L-window on that shift = the running ghr's bit L-1) ----
+    val fidxFetch = Array.tabulate(NUM)(t => fidxSpec(t): Bits)
+    val ftagFetch = Array.tabulate(NUM)(t => ftagSpec(t): Bits)
     val ghrSpecFetch = {
       var h: Bits = ghrSpec
-      for (i <- 0 until IFW) h = Mux(io.spec_br_valid(i), h(GHR - 2 downto 0) ## io.spec_br_taken(i), h)
+      for (i <- 0 until IFW) {
+        val v  = io.spec_br_valid(i)
+        val tk = io.spec_br_taken(i)
+        for (t <- 0 until NUM) {
+          val Lt = HIST(t)
+          fidxFetch(t) = Mux(v, rolXor(fidxFetch(t), Lt, tk, h(Lt - 1)), fidxFetch(t))
+          ftagFetch(t) = Mux(v, rolXor(ftagFetch(t), Lt, tk, h(Lt - 1)), ftagFetch(t))
+        }
+        h = Mux(v, h(GHR - 2 downto 0) ## tk, h)
+      }
       h
     }
     val ghrCommitNext = Mux(io.from_cb_update_en, ghrCommit(GHR - 2 downto 0) ## io.from_cb_branch_taken, ghrCommit)
 
-    // per-component folds (shared)
-    val fidxS = (0 until NUM).map(t => foldGen(ghrSpec, HIST(t), TIDX))
-    val ftagS = (0 until NUM).map(t => foldGen(ghrSpec, HIST(t), TAGB))
+    // commit-side folds stay combinational (training path at commit, not the fetch loop)
     val fidxC = (0 until NUM).map(t => foldGen(io.from_cb_ghr, HIST(t), TIDX))
     val ftagC = (0 until NUM).map(t => foldGen(io.from_cb_ghr, HIST(t), TAGB))
 
@@ -115,8 +147,8 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
       val pEnt = Vec(TageEntry(), NUM)
       val pHit = Vec(Bool(), NUM)
       for (t <- 0 until NUM) {
-        pEnt(t) := tt(t)(idxComb(pc, fidxS(t)).asUInt)
-        pHit(t) := pEnt(t).tag === tagComb(pc, ftagS(t))
+        pEnt(t) := tt(t)(idxComb(pc, fidxSpec(t)).asUInt)
+        pHit(t) := pEnt(t).tag === tagComb(pc, ftagSpec(t))
       }
       var provV: Bool   = False
       var provCtr: SInt = S(0, CTRB bits)
@@ -180,8 +212,21 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
 
     // ===== ungated per-cycle state =====
     ghrCommit := ghrCommitNext
-    when(io.flush)              { ghrSpec := ghrCommitNext }
-    .elsewhen(io.spec_update_en) { ghrSpec := ghrSpecFetch }
+    when(io.flush) {
+      ghrSpec := ghrCommitNext
+      // resync folds from the committed history (combinational fold here is on the
+      // flush/redirect path, not the fetch read loop)
+      for (t <- 0 until NUM) {
+        fidxSpec(t) := foldGen(ghrCommitNext, HIST(t), TIDX)
+        ftagSpec(t) := foldGen(ghrCommitNext, HIST(t), TAGB)
+      }
+    }.elsewhen(io.spec_update_en) {
+      ghrSpec := ghrSpecFetch
+      for (t <- 0 until NUM) {
+        fidxSpec(t) := fidxFetch(t)
+        ftagSpec(t) := ftagFetch(t)
+      }
+    }
     when(io.from_cb_update_en) {
       when(uProvWeak && (uProvPred =/= uAltPred)) {
         when(uAltPred === uTaken) { useAltOnNa := Mux(useAltOnNa === 15, useAltOnNa, (useAltOnNa + 1).resize(4 bits)) }

@@ -45,7 +45,7 @@ case class CpuConfig(
   rasDepth:    Int = 16,   // [RAS_DEPTH]
   ghrLen:      Int = 64,   // [GHR_LEN]
   tageNum:     Int = 4,    // [TAGE_NUM]
-  tageDepth:   Int = 256,  // [TAGE_DEPTH]
+  tageDepth:   Int = 128,  // A1: 256->128 = -0.19% imc for ~-9% core area (64 cost -1.4% imc; 128 is the imc knee)
   tageTagBits: Int = 9,    // [TAGE_TAG_BITS]
   tageCtrBits: Int = 3,    // [TAGE_CTR_BITS]
   tageUBits:   Int = 2,    // [TAGE_U_BITS]

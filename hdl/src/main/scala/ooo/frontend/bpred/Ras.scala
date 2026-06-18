@@ -28,7 +28,10 @@ class Ras(cfg: CpuConfig = CpuConfig()) extends Component {
     val inst_pc    = in Bits (IFW * 32 bits)
     val seq_next   = in Bits (IFW * 32 bits)
     val inst_valid = in Bits (IFW bits)
-    val insts      = in Bits (IFW * 32 bits)
+    // call/ret predecoded upstream from the raw encoding (keeps the decompressor
+    // off the fetch/predict loop) -- replaces the old decompressed `insts` port.
+    val is_call    = in Bits (IFW bits)
+    val is_ret     = in Bits (IFW bits)
     val predict_taken_in   = in Bits (IFW bits)
     val predict_target_in  = in Bits (IFW * 32 bits)
     val predict_taken_out  = out Bits (IFW bits)
@@ -42,22 +45,8 @@ class Ras(cfg: CpuConfig = CpuConfig()) extends Component {
   }
   noIoPrefix()
 
-  val insts     = io.insts.subdivideIn(IFW slices)
   val seqNext   = io.seq_next.subdivideIn(IFW slices)
   val ptgtIn    = io.predict_target_in.subdivideIn(IFW slices)
-
-  // Per-slot predecode of RAS actions (link registers are x1/x5).
-  val callSlot = Vec(Bool(), IFW)
-  val retSlot  = Vec(Bool(), IFW)
-  for (i <- 0 until IFW) {
-    val op  = insts(i)(6 downto 0)
-    val rd  = insts(i)(11 downto 7)
-    val rs1 = insts(i)(19 downto 15)
-    val linkRd  = (rd === 1) || (rd === 5)
-    val linkRs1 = (rs1 === 1) || (rs1 === 5)
-    callSlot(i) := ((op === B"7'b1101111") || (op === B"7'b1100111")) && linkRd
-    retSlot(i)  := (op === B"7'b1100111") && linkRs1 && !linkRd
-  }
 
   val domain = ClockDomain(clock = io.clk, reset = io.rst,
     config = ClockDomainConfig(resetActiveLevel = HIGH, resetKind = SYNC))
@@ -79,8 +68,8 @@ class Ras(cfg: CpuConfig = CpuConfig()) extends Component {
     var takenSeen: Bool = False
     for (i <- 0 until IFW) {
       val active = io.inst_valid(i) && !takenSeen
-      val doRet  = active && retSlot(i)
-      val doCall = active && callSlot(i)
+      val doRet  = active && io.is_ret(i)
+      val doCall = active && io.is_call(i)
       ptOut(i)   := Mux(doRet, True, io.predict_taken_in(i))
       ptgtOut(i) := Mux(doRet, rasSpecMem(t), ptgtIn(i))
       val tAfterRet  = Mux(doRet, t - 1, t)

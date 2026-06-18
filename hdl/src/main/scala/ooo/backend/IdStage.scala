@@ -85,7 +85,13 @@ class IdStage(cfg: CpuConfig = CpuConfig()) extends Component {
       isBr(i)  := (rsType(i) === RS_BR) && rawValid(i) && io.from_fifo_valid
       isMem(i) := (rsType(i) === RS_MEM) && rawValid(i) && io.from_fifo_valid
     }
-    val hazard = (isBr(0) && (isBr(1) || isMem(1))) || (isMem(0) && isMem(1))
+    // B1: allow a branch in slot0 to co-dispatch a younger LOAD in slot1 (loads are
+    // squashable, no committed memory state). Still serialize br0+STORE1 (the known
+    // store-commits-via-STQ-before-mispredict-squash hang), br0+br1, and mem0+mem1.
+    // The br0+load1 case needs the ROB redirect-priority fix (older branch wins over
+    // a younger load violation) -- see rob.sv backend_redirect_pc.
+    val store1 = isMem(1) && isStore(1)
+    val hazard = (isBr(0) && (isBr(1) || store1)) || (isMem(0) && isMem(1))
     val advance = io.to_fl_ready && io.to_rob_ready && io.nxt_ready
 
     val stalled = RegInit(False)
