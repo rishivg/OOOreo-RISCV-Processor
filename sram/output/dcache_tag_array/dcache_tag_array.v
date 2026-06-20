@@ -11,7 +11,7 @@ module dcache_tag_array(
     clk0,csb0,web0,addr0,din0,dout0
   );
 
-  parameter DATA_WIDTH = 24 ;
+  parameter DATA_WIDTH = 25 ;
   parameter ADDR_WIDTH = 4 ;
   parameter RAM_DEPTH = 1 << ADDR_WIDTH;
 

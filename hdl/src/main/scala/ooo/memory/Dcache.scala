@@ -41,7 +41,8 @@ class Dcache(cfg: CpuConfig = CpuConfig()) extends Component {
   val SETW = cfg.dSetIdx       // 4
   val OFFW = cfg.dOffsetIdx    // 5
   val TAG  = cfg.dTagIdx       // 23
-  val TAW  = TAG + 1           // 24
+  val TAW  = TAG + 2           // 25 = {epoch(valid), dirty, tag} -- valid folded into
+                               // the tag SRAM (icache-style epoch bit), no ValidArray
   val PLRU = WAYS - 1          // 3
 
   val io = new Bundle {
@@ -90,12 +91,19 @@ class Dcache(cfg: CpuConfig = CpuConfig()) extends Component {
 
     val sramSet = Mux(writeHit || stall, srSet.asBits, ufpSet)
 
-    val dataCsb = Vec(Bool(), WAYS); val tagCsb = Vec(Bool(), WAYS); val validCsb = Vec(Bool(), WAYS)
-    val dataWeb = Vec(Bool(), WAYS); val tagWeb = Vec(Bool(), WAYS); val validWeb = Vec(Bool(), WAYS)
-    val dataWmask = Bits(32 bits); val dataDin = Bits(256 bits); val tagDin = Bits(TAW bits); val validDin = True
+    // Line validity = GENERATION (epoch) bit in the tag SRAM MSB (icache-style):
+    // valid iff line_epoch == global_epoch; reset flips global_epoch to invalidate
+    // all lines at once. Removes the per-way ValidArray flops (+ its read off the
+    // load-loop critical path, whose startpoint was dc/validArray).
+    val globalEpoch = Reg(Bool())                      // no reset: toggles on rst
+    when(io.rst) { globalEpoch := !globalEpoch }
+
+    val dataCsb = Vec(Bool(), WAYS); val tagCsb = Vec(Bool(), WAYS)
+    val dataWeb = Vec(Bool(), WAYS); val tagWeb = Vec(Bool(), WAYS)
+    val dataWmask = Bits(32 bits); val dataDin = Bits(256 bits); val tagDin = Bits(TAW bits)
     val dataDout = Vec(Bits(256 bits), WAYS); val tagDout = Vec(Bits(TAW bits), WAYS); val validDout = Vec(Bool(), WAYS)
 
-    // per-way arrays
+    // per-way arrays (valid lives in the tag SRAM MSB; no separate ValidArray)
     for (i <- 0 until WAYS) {
       val da = new DcacheDataArray(SETW)
       da.io.clk0 := io.clk; da.io.csb0 := dataCsb(i); da.io.web0 := dataWeb(i)
@@ -105,10 +113,7 @@ class Dcache(cfg: CpuConfig = CpuConfig()) extends Component {
       ta.io.clk0 := io.clk; ta.io.csb0 := tagCsb(i); ta.io.web0 := tagWeb(i)
       ta.io.addr0 := sramSet; ta.io.din0 := tagDin
       tagDout(i) := ta.io.dout0
-      val va = new ValidArray(SETW)
-      va.io.clk0 := io.clk; va.io.rst0 := io.rst; va.io.csb0 := validCsb(i); va.io.web0 := validWeb(i)
-      va.io.addr0 := sramSet; va.io.din0 := validDin.asBits
-      validDout(i) := va.io.dout0(0)
+      validDout(i) := tagDout(i)(TAW - 1) === globalEpoch     // epoch MSB == global -> valid
     }
 
     // LRU array (read port0 on ufp_set, write port1 on srSet)
@@ -154,15 +159,15 @@ class Dcache(cfg: CpuConfig = CpuConfig()) extends Component {
     }
 
     // chip-select
-    for (i <- 0 until WAYS) { dataCsb(i) := True; tagCsb(i) := True; validCsb(i) := True }
+    for (i <- 0 until WAYS) { dataCsb(i) := True; tagCsb(i) := True }
     when(!stall || writeHitRec) {
-      for (i <- 0 until WAYS) { dataCsb(i) := False; tagCsb(i) := False; validCsb(i) := False }
+      for (i <- 0 until WAYS) { dataCsb(i) := False; tagCsb(i) := False }
     }
-    when(allocateDone) { dataCsb(replaceWay) := False; tagCsb(replaceWay) := False; validCsb(replaceWay) := False }
+    when(allocateDone) { dataCsb(replaceWay) := False; tagCsb(replaceWay) := False }
 
     // write-enable
-    for (i <- 0 until WAYS) { dataWeb(i) := True; tagWeb(i) := True; validWeb(i) := True }
-    when(allocateDone) { dataWeb(replaceWay) := False; tagWeb(replaceWay) := False; validWeb(replaceWay) := False }
+    for (i <- 0 until WAYS) { dataWeb(i) := True; tagWeb(i) := True }
+    when(allocateDone) { dataWeb(replaceWay) := False; tagWeb(replaceWay) := False }
     when(writeHit) { dataWeb(hitWay) := False; tagWeb(hitWay) := hitWayDirty }
 
     // SRAM wmask + din
@@ -174,7 +179,7 @@ class Dcache(cfg: CpuConfig = CpuConfig()) extends Component {
       dataWmask := B(32 bits, default -> True)
       dataDin := io.dfp_rdata
     }
-    tagDin := srWmask.orR ## srTag
+    tagDin := globalEpoch ## srWmask.orR ## srTag   // {epoch(valid), dirty, tag}
 
     // PROCESS stage / dfp + ufp
     io.dfp_addr := Mux(io.dfp_write,

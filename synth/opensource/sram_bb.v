@@ -34,8 +34,8 @@ module dcache_tag_array(vdd, gnd, clk0, csb0, web0, addr0, din0, dout0);
   inout vdd; inout gnd;
   input clk0, csb0, web0;
   input  [3:0]  addr0;
-  input  [23:0] din0;
-  output [23:0] dout0;
+  input  [24:0] din0;
+  output [24:0] dout0;
 endmodule
 
 module icache_tag_array(vdd, gnd, clk0, csb0, web0, addr0, din0, dout0);

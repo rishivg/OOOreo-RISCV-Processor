@@ -14,7 +14,7 @@ class HitDetection(cfg: CpuConfig = CpuConfig()) extends Component {
   val TAG  = cfg.dTagIdx      // 23
   val WAYS = cfg.dNumWays     // 4
   val WAYB = log2Up(WAYS)     // 2
-  val TAW  = TAG + 1          // tag_arr element width (24)
+  val TAW  = TAG + 2          // tag_arr element width (25 = {epoch, dirty, tag}); valid via valid_arr_flat
 
   val io = new Bundle {
     val tag            = in  Bits (TAG bits)

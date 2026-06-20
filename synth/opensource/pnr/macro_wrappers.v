@@ -49,13 +49,13 @@ module dcache_tag_array(vdd, gnd, clk0, csb0, web0, addr0, din0, dout0);
   inout vdd; inout gnd;
   input clk0, csb0, web0;
   input  [3:0]  addr0;
-  input  [23:0] din0;
-  output [23:0] dout0;
+  input  [24:0] din0;
+  output [24:0] dout0;
   wire [31:0] rd;
-  assign dout0 = rd[23:0];
+  assign dout0 = rd[24:0];
   fakeram45_32x32 u_ram (
     .clk(clk0), .ce_in(csb0), .we_in(web0),
-    .addr_in({1'b0, addr0}), .wd_in({8'b0, din0}), .w_mask_in(32'hFFFFFFFF), .rd_out(rd));
+    .addr_in({1'b0, addr0}), .wd_in({7'b0, din0}), .w_mask_in(32'hFFFFFFFF), .rd_out(rd));
 endmodule
 
 // I-cache tag array is 64 sets -> 64-deep fakeram45_64x32 (was 32x32 at 16 sets).
