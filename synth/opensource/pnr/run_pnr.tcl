@@ -130,7 +130,28 @@ place_pins -hor_layers metal5 -ver_layers metal6
 source $PLAT/setRC.tcl
 
 # ---------- global placement ----------
-global_placement -density $dens -pad_left 1 -pad_right 1
+# The full-core worst path is the wire-dominated AGU-0-stage load-to-use loop (~85%
+# of the path is inter-module net delay). Two env-gated levers attack the wires:
+#   PNR_TIMING_DRIVEN=1 -> gpl re-weights critical-path nets (the load loop) so it
+#       pulls those modules together instead of pure-wirelength placement.
+#   PNR_ROUTABILITY=1   -> gpl spreads to relieve congestion (can help or hurt timing).
+# Die size / density (PNR_DIE_UM / PNR_DENSITY above) tighten the whole floorplan so
+# every net is shorter. Defaults reproduce the prior wirelength-driven run.
+set gp_opts [list -density $dens -pad_left 1 -pad_right 1]
+# Timing-driven global placement is ON by default: it re-weights the critical-path
+# (load-loop) nets so gpl shortens them instead of pure-wirelength packing. Measured
+# +31.9% Fmax (137.55 -> 181.49 MHz @ die1250/0.72) for +5.3% area / +6% power, 0 IPC.
+# A die/density sweep confirmed 1250 is the peak (1200/1150 worse: higher util ->
+# congestion; 1300/1350 worse: longer wires). Set PNR_TIMING_DRIVEN=0 to disable.
+if { !([info exists ::env(PNR_TIMING_DRIVEN)] && $::env(PNR_TIMING_DRIVEN) == 0) } {
+  lappend gp_opts -timing_driven
+  puts "INFO: timing-driven global placement enabled"
+}
+if { [info exists ::env(PNR_ROUTABILITY)] && $::env(PNR_ROUTABILITY) == 1 } {
+  lappend gp_opts -routability_driven
+  puts "INFO: routability-driven global placement enabled"
+}
+global_placement {*}$gp_opts
 estimate_parasitics -placement
 
 puts "\n===== timing BEFORE repair_design (unbuffered) ====="
