@@ -17,6 +17,20 @@ class TageBank(addrW: Int, dw: Int) extends BlackBox {
   noIoPrefix()
 }
 
+/** Block-read bimodal (base PHT) bank (1R1W): 64 rows x 16b (= 8 lanes x 2b). Same
+  * 1R1W combinational-read / masked-write contract as TageBank but a narrow 16b row.
+  * Sim model sram/output/bim_bank_array; P&R maps it via macro_wrappers.v. */
+class BimBank(addrW: Int, dw: Int) extends BlackBox {
+  setBlackBoxName("bim_bank_array")
+  val io = new Bundle {
+    val clk   = in  Bool()
+    val re    = in  Bool();        val raddr = in  Bits(addrW bits); val rdata = out Bits(dw bits)
+    val we    = in  Bool();        val waddr = in  Bits(addrW bits)
+    val wdata = in  Bits(dw bits); val wmask = in  Bits(dw bits)
+  }
+  noIoPrefix()
+}
+
 /** SpinalHDL port of `hdl/frontend/branch_predictor/tage.sv` -- the TAGE direction
   * predictor: a bimodal base + TAGE_NUM tagged components with geometric history
   * lengths, spec/commit global history, use_alt_on_newly_allocated policy counter,
@@ -51,8 +65,9 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     val from_cb_branch_taken = in Bool()
     val from_cb_ghr          = in Bits (GHR bits)
     // forwarded predict-time provider snapshot for the committing branch (per-table
-    // {hit,ctr,u}); replaces the commit-side re-read of tt -> commit is write-only.
-    val from_cb_prov         = in Bits (NUM * (1 + CTRB + UB) bits)
+    // {hit,ctr,u} PLUS the 2b bimodal counter); replaces the commit-side re-read of the
+    // tagged tables AND the bimodal -> commit is write-only for both.
+    val from_cb_prov         = in Bits (NUM * (1 + CTRB + UB) + 2 bits)
     val inst_pc        = in Bits (IFW * 32 bits)
     val flush          = in Bool()
     val spec_update_en = in Bool()
@@ -60,10 +75,11 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     val spec_br_taken  = in Bits (IFW bits)
     val ghr_snapshot   = out Bits (GHR bits)
     val predict_taken  = out Bits (IFW bits)
-    // per-slot provider snapshot (NUM x {hit(1),ctr(CTRB),u(UB)}) carried to commit
-    val prov_snapshot_flat = out Bits (IFW * NUM * (1 + CTRB + UB) bits)
+    // per-slot provider snapshot (bimodal 2b ## NUM x {hit(1),ctr(CTRB),u(UB)}) -> commit
+    val prov_snapshot_flat = out Bits (IFW * (NUM * (1 + CTRB + UB) + 2) bits)
   }
-  val PB = 1 + CTRB + UB   // per-table provider-snapshot bits (= 6)
+  val PB  = 1 + CTRB + UB     // per-table provider-snapshot bits (= 6)
+  val PBT = NUM * PB + 2      // total per-slot snapshot bits (tables ## bimodal 2b) (= 26)
   noIoPrefix()
 
   case class TageEntry() extends Bundle {
@@ -132,6 +148,18 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     e
   }
 
+  // ---- bimodal base PHT, block-read (NO history fold -- pure PC base predictor) ----
+  // Row = block-aligned PC (drop in-block offset); LANES 2b counters selected by the
+  // in-block halfword (laneOf). BROWI rows x LANES = PHTD entries. Banked even/odd
+  // (bank=row[0]) so the 2-block straddle reads hit opposite banks, like the tagged
+  // tables. Counter (2b) forwarded at commit -> bimodal commit is also write-only.
+  val BROWI = PHTI - log2Up(LANES)   // 7  (rows = 128; 128 x 8 lanes = 1024 = PHTD)
+  val BEW   = 2                      // 2b saturating counter / lane
+  val BDW   = LANES * BEW            // 16 (row width)
+  val BADDR = BROWI - 1              // 6  (rows/bank = 64)
+  def bRowOf(pc: Bits): Bits = pc(BROWI + LZ - 1 downto LZ)        // pc(10:4), 7 bits
+  def bCtr(row: Bits, lane: UInt): UInt = row.subdivideIn(LANES slices)(lane).asUInt  // 2b
+
   def ctrUpd(c: SInt, taken: Bool): SInt = {
     val maxv = S((1 << (CTRB - 1)) - 1, CTRB bits)   // +3
     val minv = S(-(1 << (CTRB - 1)), CTRB bits)      // -4
@@ -153,7 +181,10 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     val fidxSpec = Array.tabulate(NUM)(_ => RegInit(B(0, TIDX bits)))
     val ftagSpec = Array.tabulate(NUM)(_ => RegInit(B(0, TAGB bits)))
     val useAltOnNa = RegInit(U(8, 4 bits))
-    val bimodal = Vec.fill(PHTD)(RegInit(U(1, 2 bits)))                 // base predictor (init 01; reset kept -- stripping it perturbs warm-up IPC)
+    // bimodal base PHT -> block-read SRAM banks (even/odd by bRow[0]); 2 reads (straddle)
+    // + write-only commit (forwarded counter). Sim model inits to 01/lane (warm-up parity).
+    val bimBank = Array.fill(2)(new BimBank(BADDR, BDW))
+    for (b <- 0 until 2) { bimBank(b).io.clk := io.clk; bimBank(b).io.re := True }
     // tagged tables self-correct (a stale tag just mispredicts, then is overwritten)
     // -> no reset: drops ~NUM*TDEPTH*entryW reset flops off the predictor.
     // block-read tables -> per-table even/odd SRAM banks (1R1W): bank=blkIdx[0],
@@ -207,21 +238,29 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     }
     val rowA = Array.tabulate(NUM)(t => Mux(bankA(t) === False, bank(t)(0).io.rdata, bank(t)(1).io.rdata))
     val rowB = Array.tabulate(NUM)(t => Mux(bankA(t) === False, bank(t)(1).io.rdata, bank(t)(0).io.rdata))
+    // bimodal block-read (same 2-bank straddle as the tagged tables, no fold)
+    val bBankA = bRowOf(instPc(0))(0)
+    val bAddrA = bRowOf(instPc(0))(BROWI - 1 downto 1); val bAddrB = bRowOf(blkBpc)(BROWI - 1 downto 1)
+    bimBank(0).io.raddr := Mux(bBankA === False, bAddrA, bAddrB)
+    bimBank(1).io.raddr := Mux(bBankA === False, bAddrB, bAddrA)
+    val bRowA = Mux(bBankA === False, bimBank(0).io.rdata, bimBank(1).io.rdata)
+    val bRowB = Mux(bBankA === False, bimBank(1).io.rdata, bimBank(0).io.rdata)
     val ptaken = Vec(Bool(), IFW)
-    val snap   = Vec(Bits(NUM * PB bits), IFW)   // per-slot {hit,ctr,u}xNUM, table t at [t*PB +: PB]
+    val snap   = Vec(Bits(PBT bits), IFW)   // per-slot: bimodal 2b ## {hit,ctr,u}xNUM
     for (i <- 0 until IFW) {
       val pc = instPc(i)
       val inB = pc(31 downto LZ) =/= instPc(0)(31 downto LZ)       // slot in the next block?
-      val basePred = bimodal(bidx(pc).asUInt) >= U(2)
+      val bimCtrSlot = bCtr(Mux(inB, bRowB, bRowA), laneOf(pc))   // 2b base counter
+      val basePred = bimCtrSlot >= U(2)
       val pEnt = Vec(TageEntry(), NUM)
       val pHit = Vec(Bool(), NUM)
       for (t <- 0 until NUM) {
         pEnt(t) := laneEntry(Mux(inB, rowB(t), rowA(t)), laneOf(pc))
         pHit(t) := pEnt(t).tag === tagComb(pc, ftagSpec(t))
       }
-      // snapshot the predict-time provider entries (per table: {hit, ctr, u}); decoded
-      // back at commit (from_cb_prov) so the commit needs no table re-read.
-      snap(i) := Vec((0 until NUM).map(t => pHit(t).asBits ## pEnt(t).ctr.asBits ## pEnt(t).u.asBits)).asBits
+      // snapshot the predict-time provider entries (bimodal 2b ## per-table {hit,ctr,u});
+      // decoded back at commit (from_cb_prov) so the commit re-reads neither tt nor bimodal.
+      snap(i) := bimCtrSlot.asBits ## Vec((0 until NUM).map(t => pHit(t).asBits ## pEnt(t).ctr.asBits ## pEnt(t).u.asBits)).asBits
       var provV: Bool   = False
       var provCtr: SInt = S(0, CTRB bits)
       var provU: UInt   = U(0, UB bits)
@@ -242,17 +281,17 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
 
     // ===== training derivation at commit =====
     val uTaken    = io.from_cb_branch_taken
-    val bimWidx   = bidx(io.from_cb_pc).asUInt
-    val basePredC = bimodal(bimWidx) >= U(2)
+    // commit is WRITE-ONLY for both tagged tables AND bimodal: provider entries + the 2b
+    // bimodal counter come from the forwarded predict-time snapshot (from_cb_prov), no
+    // re-read. Layout: [NUM*PB-1:0] = tables (table t at slice t), [NUM*PB+1:NUM*PB] = bim.
+    val fwdBimCtr = io.from_cb_prov(NUM * PB + 1 downto NUM * PB).asUInt   // forwarded 2b base counter
+    val basePredC = fwdBimCtr >= U(2)
 
     val uIdx  = Vec(UInt(TIDX bits), NUM)
     val uLane = laneOf(io.from_cb_pc)
     val uEnt  = Vec(TageEntry(), NUM)
     val uHit  = Vec(Bool(), NUM)
-    // commit is WRITE-ONLY: source the provider entries from the forwarded predict-time
-    // snapshot (from_cb_prov) instead of re-reading tt. uIdx/uLane are still the WRITE
-    // address; uEnt.tag is unused at commit (the alloc write uses tagComb).
-    val uProvDec = io.from_cb_prov.subdivideIn(NUM slices)        // table t at slice t (LSB-first)
+    val uProvDec = io.from_cb_prov(NUM * PB - 1 downto 0).subdivideIn(NUM slices)   // table t at slice t
     for (t <- 0 until NUM) {
       uIdx(t) := blkIdx(io.from_cb_pc, fidxC(t)).asUInt
       uHit(t)     := uProvDec(t)(PB - 1)                          // bit PB-1 = hit
@@ -314,12 +353,26 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
       }
     }
 
-    // ===== bimodal base write (small -> stays in flops) =====
-    when(io.from_cb_update_en) {
-      when(!uProvV) {
-        when(uTaken) { bimodal(bimWidx) := Mux(bimodal(bimWidx) === 3, bimodal(bimWidx), (bimodal(bimWidx) + 1).resize(2 bits)) }
-        .otherwise   { bimodal(bimWidx) := Mux(bimodal(bimWidx) === 0, bimodal(bimWidx), (bimodal(bimWidx) - 1).resize(2 bits)) }
-      }
+    // ===== bimodal base PHT bank write (commit-gated, WRITE-ONLY via forwarded counter) =====
+    // Update only when no tagged provider hit (same policy as the flop version); the new
+    // counter is computed from the forwarded fwdBimCtr (no re-read). Masked single lane.
+    val bNew = Mux(uTaken, Mux(fwdBimCtr === 3, fwdBimCtr, (fwdBimCtr + 1).resize(2 bits)),
+                           Mux(fwdBimCtr === 0, fwdBimCtr, (fwdBimCtr - 1).resize(2 bits)))
+    val bDoWr   = io.from_cb_update_en && !uProvV
+    val bWrIdx  = bRowOf(io.from_cb_pc)
+    val bWrLane = laneOf(io.from_cb_pc)
+    val bRowData = Vec(Bits(BEW bits), LANES); val bRowMask = Vec(Bits(BEW bits), LANES)
+    for (k <- 0 until LANES) {
+      bRowData(k) := bNew.asBits
+      bRowMask(k) := Mux(bWrLane === U(k, log2Up(LANES) bits), B((1 << BEW) - 1, BEW bits), B(0, BEW bits))
+    }
+    val bBankW = bWrIdx(0)
+    val bAddrW = bWrIdx(BROWI - 1 downto 1)
+    for (b <- 0 until 2) {
+      bimBank(b).io.we    := bDoWr && (if (b == 0) (bBankW === False) else (bBankW === True))
+      bimBank(b).io.waddr := bAddrW
+      bimBank(b).io.wdata := bRowData.asBits
+      bimBank(b).io.wmask := bRowMask.asBits
     }
 
     // ===== tagged-table SRAM bank writes (commit-gated, masked single lane at uLane) =====

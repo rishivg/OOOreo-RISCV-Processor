@@ -22,7 +22,7 @@ class FrontendTop(cfg: CpuConfig = CpuConfig()) extends Component {
   setDefinitionName("frontend_top_spinal")
   val IFW  = cfg.ifWidth          // 4
   val GHR  = cfg.ghrLen           // 64
-  val PROV = cfg.tageNum * (1 + cfg.tageCtrBits + cfg.tageUBits)   // 24 (per-slot TAGE provider snapshot)
+  val PROV = cfg.tageNum * (1 + cfg.tageCtrBits + cfg.tageUBits) + 2   // +2 = forwarded bimodal counter
   val IFIDX = log2Up(IFW)         // 2
   val PMAX = 2 * IFW              // 8 parcels
   val LZ   = log2Up(IFW * 4)      // block byte-offset bits (4)

@@ -90,3 +90,20 @@ module tage_bank_array(clk, re, raddr, rdata, we, waddr, wdata, wmask);
     .addr_in(we ? waddr : raddr),
     .wd_in({12'b0, wdata}), .w_mask_in({12'b0, wmask}), .rd_out(rd));
 endmodule
+
+// Block-read bimodal (base PHT) bank: 64 rows x 16b (8 lanes x 2b) -> reuse the existing
+// fakeram45_64x32 (uses 16 of 32 width; tiny, so the 2x width over-provision is
+// negligible and avoids a new macro). 1R1W modeled single-port w/ addr-mux, like the
+// TAGE bank. 2 banks (even/odd block).
+module bim_bank_array(clk, re, raddr, rdata, we, waddr, wdata, wmask);
+  input clk, re, we;
+  input  [5:0]  raddr, waddr;
+  input  [15:0] wdata, wmask;
+  output [15:0] rdata;
+  wire [31:0] rd;
+  assign rdata = rd[15:0];
+  fakeram45_64x32 u_ram (
+    .clk(clk), .ce_in(1'b0), .we_in(~we),
+    .addr_in(we ? waddr : raddr),
+    .wd_in({16'b0, wdata}), .w_mask_in({16'b0, wmask}), .rd_out(rd));
+endmodule

@@ -19,7 +19,7 @@ class InstQueue(cfg: CpuConfig = CpuConfig(), val depth: Int = 8) extends Compon
   val IFW  = cfg.ifWidth       // 4
   val OW   = cfg.idWidth       // 2
   val GHR  = cfg.ghrLen        // 64
-  val PROV = cfg.tageNum * (1 + cfg.tageCtrBits + cfg.tageUBits)   // 24 (per-slot TAGE provider snapshot)
+  val PROV = cfg.tageNum * (1 + cfg.tageCtrBits + cfg.tageUBits) + 2   // +2 = forwarded bimodal counter
   val DEPTH = depth            // 8
   val AIDX = log2Up(DEPTH)     // 3
   val NC   = 2 * IFW           // 8 candidates

@@ -16,7 +16,7 @@ class ControlBuffer(cfg: CpuConfig = CpuConfig()) extends Component {
   val DEPTH = cfg.cbDepth      // 8
   val IDX   = log2Up(DEPTH)    // 3
   val GHR   = cfg.ghrLen       // 64
-  val PROV  = cfg.tageNum * (1 + cfg.tageCtrBits + cfg.tageUBits)   // 24 (TAGE provider snapshot)
+  val PROV  = cfg.tageNum * (1 + cfg.tageCtrBits + cfg.tageUBits) + 2   // +2 = forwarded bimodal counter
   def BR_AUIPC = B"4'b1111"
 
   case class CbEntry() extends Bundle {

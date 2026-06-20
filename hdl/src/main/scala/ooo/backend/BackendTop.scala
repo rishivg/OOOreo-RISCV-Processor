@@ -25,7 +25,7 @@ class BackendTop(cfg: CpuConfig = CpuConfig()) extends Component {
   val IDW = cfg.idWidth; val CDBW = cfg.cdbWidth; val NFB = cfg.numFastBypass
   val IIW = cfg.intIssueWidth   // 2
   val PIDX = cfg.prfIdx; val AIDX = cfg.arfIdx; val RIDX = cfg.robIdx; val GHR = cfg.ghrLen
-  val PROV = cfg.tageNum * (1 + cfg.tageCtrBits + cfg.tageUBits)   // 24 (per-slot TAGE provider snapshot)
+  val PROV = cfg.tageNum * (1 + cfg.tageCtrBits + cfg.tageUBits) + 2   // +2 = forwarded bimodal counter
   val BNW = 1 + PIDX + 32       // 39
   val RVFIW = 413
   val REGW = 85; val CDBR = 113 // intm div iss/cdb
