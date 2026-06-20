@@ -36,6 +36,9 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     val from_cb_pc           = in Bits (32 bits)
     val from_cb_branch_taken = in Bool()
     val from_cb_ghr          = in Bits (GHR bits)
+    // forwarded predict-time provider snapshot for the committing branch (per-table
+    // {hit,ctr,u}); replaces the commit-side re-read of tt -> commit is write-only.
+    val from_cb_prov         = in Bits (NUM * (1 + CTRB + UB) bits)
     val inst_pc        = in Bits (IFW * 32 bits)
     val flush          = in Bool()
     val spec_update_en = in Bool()
@@ -43,7 +46,10 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     val spec_br_taken  = in Bits (IFW bits)
     val ghr_snapshot   = out Bits (GHR bits)
     val predict_taken  = out Bits (IFW bits)
+    // per-slot provider snapshot (NUM x {hit(1),ctr(CTRB),u(UB)}) carried to commit
+    val prov_snapshot_flat = out Bits (IFW * NUM * (1 + CTRB + UB) bits)
   }
+  val PB = 1 + CTRB + UB   // per-table provider-snapshot bits (= 6)
   noIoPrefix()
 
   case class TageEntry() extends Bundle {
@@ -161,6 +167,7 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     val rowA = Array.tabulate(NUM)(t => tt(t)(blkIdx(instPc(0), fidxSpec(t)).asUInt))
     val rowB = Array.tabulate(NUM)(t => tt(t)(blkIdx(blkBpc,    fidxSpec(t)).asUInt))
     val ptaken = Vec(Bool(), IFW)
+    val snap   = Vec(Bits(NUM * PB bits), IFW)   // per-slot {hit,ctr,u}xNUM, table t at [t*PB +: PB]
     for (i <- 0 until IFW) {
       val pc = instPc(i)
       val inB = pc(31 downto LZ) =/= instPc(0)(31 downto LZ)       // slot in the next block?
@@ -171,6 +178,9 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
         pEnt(t) := Mux(inB, rowB(t), rowA(t))(laneOf(pc))
         pHit(t) := pEnt(t).tag === tagComb(pc, ftagSpec(t))
       }
+      // snapshot the predict-time provider entries (per table: {hit, ctr, u}); decoded
+      // back at commit (from_cb_prov) so the commit needs no table re-read.
+      snap(i) := Vec((0 until NUM).map(t => pHit(t).asBits ## pEnt(t).ctr.asBits ## pEnt(t).u.asBits)).asBits
       var provV: Bool   = False
       var provCtr: SInt = S(0, CTRB bits)
       var provU: UInt   = U(0, UB bits)
@@ -187,6 +197,7 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
       ptaken(i) := Mux(provWeak && useAltOnNa(3), altP, Mux(provV, provCtr >= 0, basePred))
     }
     io.predict_taken := ptaken.asBits
+    io.prov_snapshot_flat := snap.asBits
 
     // ===== training derivation at commit =====
     val uTaken    = io.from_cb_branch_taken
@@ -197,10 +208,16 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     val uLane = laneOf(io.from_cb_pc)
     val uEnt  = Vec(TageEntry(), NUM)
     val uHit  = Vec(Bool(), NUM)
+    // commit is WRITE-ONLY: source the provider entries from the forwarded predict-time
+    // snapshot (from_cb_prov) instead of re-reading tt. uIdx/uLane are still the WRITE
+    // address; uEnt.tag is unused at commit (the alloc write uses tagComb).
+    val uProvDec = io.from_cb_prov.subdivideIn(NUM slices)        // table t at slice t (LSB-first)
     for (t <- 0 until NUM) {
       uIdx(t) := blkIdx(io.from_cb_pc, fidxC(t)).asUInt
-      uEnt(t) := tt(t)(uIdx(t))(uLane)
-      uHit(t) := uEnt(t).tag === tagComb(io.from_cb_pc, ftagC(t))
+      uHit(t)     := uProvDec(t)(PB - 1)                          // bit PB-1 = hit
+      uEnt(t).tag := B(0, TAGB bits)                              // unused at commit
+      uEnt(t).ctr := uProvDec(t)(UB + CTRB - 1 downto UB).asSInt  // [UB +: CTRB] = ctr
+      uEnt(t).u   := uProvDec(t)(UB - 1 downto 0).asUInt          // [0 +: UB] = u
     }
 
     var uProvV: Bool    = False

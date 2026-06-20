@@ -22,6 +22,7 @@ class FrontendTop(cfg: CpuConfig = CpuConfig()) extends Component {
   setDefinitionName("frontend_top_spinal")
   val IFW  = cfg.ifWidth          // 4
   val GHR  = cfg.ghrLen           // 64
+  val PROV = cfg.tageNum * (1 + cfg.tageCtrBits + cfg.tageUBits)   // 24 (per-slot TAGE provider snapshot)
   val IFIDX = log2Up(IFW)         // 2
   val PMAX = 2 * IFW              // 8 parcels
   val LZ   = log2Up(IFW * 4)      // block byte-offset bits (4)
@@ -41,6 +42,7 @@ class FrontendTop(cfg: CpuConfig = CpuConfig()) extends Component {
     val to_fifo_pc_flat       = out Bits (IFW * 32 bits)
     val to_fifo_valid_slots   = out Bits (IFW bits)
     val to_fifo_ghr           = out Bits (GHR bits)
+    val to_fifo_prov_flat     = out Bits (IFW * PROV bits)   // per-slot TAGE provider snapshot
     // cacheline_itf.master icache_itf
     val icache_addr   = out Bits (32 bits); val icache_read = out Bool(); val icache_write = out Bool()
     val icache_wdata  = out Bits (256 bits); val icache_ready = in Bool(); val icache_raddr = in Bits (32 bits)
@@ -55,6 +57,7 @@ class FrontendTop(cfg: CpuConfig = CpuConfig()) extends Component {
     val from_cb_is_call        = in Bool()
     val from_cb_is_ret         = in Bool()
     val from_cb_is_compressed  = in Bool()
+    val from_cb_prov           = in Bits (PROV bits)   // forwarded provider snapshot (committing branch)
     // perf tap
     val dbg_icache_unresponsive = out Bool()
   }
@@ -193,6 +196,8 @@ class FrontendTop(cfg: CpuConfig = CpuConfig()) extends Component {
     tage.io.clk := io.clk; tage.io.rst := io.rst
     tage.io.from_cb_update_en := io.from_cb_update_en; tage.io.from_cb_pc := io.from_cb_pc
     tage.io.from_cb_branch_taken := io.from_cb_branch_taken; tage.io.from_cb_ghr := io.from_cb_ghr
+    tage.io.from_cb_prov := io.from_cb_prov
+    io.to_fifo_prov_flat := tage.io.prov_snapshot_flat
     tage.io.inst_pc := faInstPc; tage.io.flush := io.backend_flush
     tage.io.spec_update_en := fetchFire; tage.io.spec_br_valid := specBrValid.asBits
     tage.io.spec_br_taken := effPredictTaken

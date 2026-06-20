@@ -25,6 +25,7 @@ class BackendTop(cfg: CpuConfig = CpuConfig()) extends Component {
   val IDW = cfg.idWidth; val CDBW = cfg.cdbWidth; val NFB = cfg.numFastBypass
   val IIW = cfg.intIssueWidth   // 2
   val PIDX = cfg.prfIdx; val AIDX = cfg.arfIdx; val RIDX = cfg.robIdx; val GHR = cfg.ghrLen
+  val PROV = cfg.tageNum * (1 + cfg.tageCtrBits + cfg.tageUBits)   // 24 (per-slot TAGE provider snapshot)
   val BNW = 1 + PIDX + 32       // 39
   val RVFIW = 413
   val REGW = 85; val CDBR = 113 // intm div iss/cdb
@@ -40,6 +41,7 @@ class BackendTop(cfg: CpuConfig = CpuConfig()) extends Component {
     val ff_is_compressed = in Bits (IDW bits); val ff_predict_taken = in Bits (IDW bits)
     val ff_predict_target_flat = in Bits (IDW * 32 bits); val ff_pc_flat = in Bits (IDW * 32 bits)
     val ff_valid_slots = in Bits (IDW bits); val ff_ghr_flat = in Bits (IDW * GHR bits)
+    val ff_prov_flat = in Bits (IDW * PROV bits)
     // dcache dfp
     val dfp_addr = out Bits (32 bits); val dfp_read = out Bool(); val dfp_write = out Bool()
     val dfp_wdata = out Bits (256 bits); val dfp_ready = in Bool(); val dfp_raddr = in Bits (32 bits)
@@ -48,6 +50,7 @@ class BackendTop(cfg: CpuConfig = CpuConfig()) extends Component {
     val to_bp_update_en = out Bool(); val to_bp_pc = out Bits (32 bits); val to_bp_fu_opcode = out Bits (4 bits)
     val to_bp_branch_taken = out Bool(); val to_bp_target = out Bits (32 bits); val to_bp_ghr = out Bits (GHR bits)
     val to_bp_is_call = out Bool(); val to_bp_is_ret = out Bool(); val to_bp_is_compressed = out Bool()
+    val to_bp_prov = out Bits (PROV bits)
     // externalised fu_div
     val div_prv_valid = out Bool(); val div_prv_ready = in Bool()
     val div_nxt_valid = in Bool(); val div_nxt_ready = out Bool()
@@ -80,6 +83,7 @@ class BackendTop(cfg: CpuConfig = CpuConfig()) extends Component {
     val rs1_valid = Bits(1 bits); val rs2_valid = Bits(1 bits); val imm = Bits(32 bits); val rob_id = Bits(RIDX bits)
     val rd_arch = Bits(AIDX bits); val rs1_arch = Bits(AIDX bits); val rs2_arch = Bits(AIDX bits)
     val predict_taken = Bits(1 bits); val predict_target = Bits(32 bits); val ghr = Bits(GHR bits); val inst_raw = Bits(32 bits)
+    val prov = Bits(PROV bits)
     val is_atomic = Bits(1 bits); val amo_op = Bits(4 bits)   // RV32A (aExt)
   }
   def intEntry(u: Uop)  = u.rob_id ## u.rs1_phy ## u.rs1_valid ## u.rs2_phy ## u.rs2_valid ## u.rd_phy ## u.rd_arch ## u.op1_sel ## u.op2_sel ## u.imm ## u.fu_opcode
@@ -157,6 +161,7 @@ class BackendTop(cfg: CpuConfig = CpuConfig()) extends Component {
     val ffPredTgt = io.ff_predict_target_flat.subdivideIn(IDW slices)
     val ffPc = io.ff_pc_flat.subdivideIn(IDW slices)
     val ffGhr = io.ff_ghr_flat.subdivideIn(IDW slices)
+    val ffProv = io.ff_prov_flat.subdivideIn(IDW slices)
     val ratRs1Phy = rat.io.from_id_rs1_phy_flat.subdivideIn(IDW slices)
     val ratRs2Phy = rat.io.from_id_rs2_phy_flat.subdivideIn(IDW slices)
     val robId = rob.io.from_id_rob_id_flat.subdivideIn(IDW slices)
@@ -174,6 +179,7 @@ class BackendTop(cfg: CpuConfig = CpuConfig()) extends Component {
       u.imm := sl(id.io.imm_flat, i, 32); u.rob_id := robId(i)
       u.rd_arch := sl(id.io.rd_arch_flat, i, AIDX); u.rs1_arch := sl(id.io.rs1_arch_flat, i, AIDX); u.rs2_arch := sl(id.io.rs2_arch_flat, i, AIDX)
       u.predict_taken := io.ff_predict_taken(i, 1 bits); u.predict_target := ffPredTgt(i); u.ghr := ffGhr(i); u.inst_raw := ffInstRaw(i)
+      u.prov := ffProv(i)
       u.is_atomic := id.io.is_atomic(i, 1 bits); u.amo_op := sl(id.io.amo_op_flat, i, 4)
     }
     rob.io.from_id_rvfi_dbg_flat := Cat((0 until IDW).map(i => rvfiBits(uops(i))))
@@ -198,6 +204,7 @@ class BackendTop(cfg: CpuConfig = CpuConfig()) extends Component {
     br.io.from_ds_entry_flat := brEntry(brUop)
     br.io.uop_rob_id := brUop.rob_id; br.io.uop_pc := brUop.pc; br.io.uop_fu_opcode := brUop.fu_opcode
     br.io.uop_ghr := brUop.ghr; br.io.uop_is_compressed := brUop.is_compressed(0); br.io.uop_inst := brUop.inst
+    br.io.uop_prov := brUop.prov
     lsu.io.from_ds_valid := ds.io.to_mem_rs_valid
     lsu.io.mem_rs_entry_flat := memEntry(memUop)
     lsu.io.uop_rob_id := memUop.rob_id; lsu.io.uop_fu_opcode := memUop.fu_opcode
@@ -272,6 +279,7 @@ class BackendTop(cfg: CpuConfig = CpuConfig()) extends Component {
     io.to_bp_update_en := br.io.to_bp_update_en; io.to_bp_pc := br.io.to_bp_pc; io.to_bp_fu_opcode := br.io.to_bp_fu_opcode
     io.to_bp_branch_taken := br.io.to_bp_branch_taken; io.to_bp_target := br.io.to_bp_target; io.to_bp_ghr := br.io.to_bp_ghr
     io.to_bp_is_call := br.io.to_bp_is_call; io.to_bp_is_ret := br.io.to_bp_is_ret; io.to_bp_is_compressed := br.io.to_bp_is_compressed
+    io.to_bp_prov := br.io.to_bp_prov
 
     // ---- lsu <-> rob (stq/ldq) + dcache dfp ----
     rob.io.from_stq_rob_id := lsu.io.st_rob_rob_id; rob.io.from_stq_addr_dbg := lsu.io.st_rob_addr_dbg

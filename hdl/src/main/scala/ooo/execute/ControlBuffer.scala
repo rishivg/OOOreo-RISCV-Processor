@@ -16,12 +16,14 @@ class ControlBuffer(cfg: CpuConfig = CpuConfig()) extends Component {
   val DEPTH = cfg.cbDepth      // 8
   val IDX   = log2Up(DEPTH)    // 3
   val GHR   = cfg.ghrLen       // 64
+  val PROV  = cfg.tageNum * (1 + cfg.tageCtrBits + cfg.tageUBits)   // 24 (TAGE provider snapshot)
   def BR_AUIPC = B"4'b1111"
 
   case class CbEntry() extends Bundle {
     val rob_id = Bits(6 bits); val miss_predict = Bool(); val target_address = Bits(32 bits)
     val branch_taken = Bool(); val pc = Bits(32 bits); val fu_opcode = Bits(4 bits)
     val ghr = Bits(GHR bits); val is_call = Bool(); val is_ret = Bool(); val is_compressed = Bool()
+    val prov = Bits(PROV bits)
   }
 
   val io = new Bundle {
@@ -31,6 +33,7 @@ class ControlBuffer(cfg: CpuConfig = CpuConfig()) extends Component {
     val from_ds_ready = out Bool()
     val uop_rob_id = in Bits (6 bits);  val uop_pc = in Bits (32 bits)
     val uop_fu_opcode = in Bits (4 bits); val uop_ghr = in Bits (GHR bits)
+    val uop_prov = in Bits (PROV bits)
     val uop_is_compressed = in Bool(); val uop_inst = in Bits (32 bits)
     val branch_ready = in Bool()
     // br_cdb_itf.cb (in)
@@ -46,6 +49,7 @@ class ControlBuffer(cfg: CpuConfig = CpuConfig()) extends Component {
     val to_bp_fu_opcode = out Bits (4 bits); val to_bp_branch_taken = out Bool()
     val to_bp_target = out Bits (32 bits); val to_bp_ghr = out Bits (GHR bits)
     val to_bp_is_call = out Bool(); val to_bp_is_ret = out Bool(); val to_bp_is_compressed = out Bool()
+    val to_bp_prov = out Bits (PROV bits)
   }
   noIoPrefix()
 
@@ -79,6 +83,7 @@ class ControlBuffer(cfg: CpuConfig = CpuConfig()) extends Component {
       fifo(wr_actual).pc            := io.uop_pc
       fifo(wr_actual).fu_opcode     := io.uop_fu_opcode
       fifo(wr_actual).ghr           := io.uop_ghr
+      fifo(wr_actual).prov          := io.uop_prov
       fifo(wr_actual).is_call       := enq_is_call
       fifo(wr_actual).is_ret        := enq_is_ret
       fifo(wr_actual).is_compressed := io.uop_is_compressed
@@ -105,6 +110,7 @@ class ControlBuffer(cfg: CpuConfig = CpuConfig()) extends Component {
     io.to_bp_branch_taken  := head.branch_taken
     io.to_bp_target        := head.target_address
     io.to_bp_ghr           := head.ghr
+    io.to_bp_prov          := head.prov
     io.to_bp_is_call       := head.is_call
     io.to_bp_is_ret        := head.is_ret
     io.to_bp_is_compressed := head.is_compressed

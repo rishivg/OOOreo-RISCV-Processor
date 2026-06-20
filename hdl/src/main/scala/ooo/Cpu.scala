@@ -60,6 +60,7 @@ class Cpu(cfg: CpuConfig = CpuConfig()) extends Component {
   iq.io.in_pc_flat := frontend.io.to_fifo_pc_flat
   iq.io.in_valid_slots := frontend.io.to_fifo_valid_slots
   iq.io.in_ghr := frontend.io.to_fifo_ghr
+  iq.io.in_prov_flat := frontend.io.to_fifo_prov_flat
 
   // ---- inst_queue -> backend (fifo_backend) ----
   backend.io.from_fifo_valid := iq.io.out_valid
@@ -72,6 +73,7 @@ class Cpu(cfg: CpuConfig = CpuConfig()) extends Component {
   backend.io.ff_pc_flat := iq.io.out_pc_flat
   backend.io.ff_valid_slots := iq.io.out_valid_slots
   backend.io.ff_ghr_flat := iq.io.out_ghr_flat
+  backend.io.ff_prov_flat := iq.io.out_prov_flat
 
   // ---- backend -> frontend (cb_bp) ----
   frontend.io.from_cb_update_en := backend.io.to_bp_update_en
@@ -83,6 +85,7 @@ class Cpu(cfg: CpuConfig = CpuConfig()) extends Component {
   frontend.io.from_cb_is_call := backend.io.to_bp_is_call
   frontend.io.from_cb_is_ret := backend.io.to_bp_is_ret
   frontend.io.from_cb_is_compressed := backend.io.to_bp_is_compressed
+  frontend.io.from_cb_prov := backend.io.to_bp_prov
 
   // ---- fu_div (externalised from backend) ----
   fudiv.io.prv_valid := backend.io.div_prv_valid

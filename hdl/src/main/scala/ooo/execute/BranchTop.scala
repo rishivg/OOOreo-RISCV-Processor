@@ -21,6 +21,7 @@ class BranchTop(cfg: CpuConfig = CpuConfig()) extends Component {
   val RIDX = cfg.robIdx          // 6
   val AIDX = cfg.arfIdx          // 5
   val GHR  = cfg.ghrLen          // 64
+  val PROV = cfg.tageNum * (1 + cfg.tageCtrBits + cfg.tageUBits)   // 24 (TAGE provider snapshot)
   val EW   = RsEntryLayout.br.width   // 133
   val BNW  = 1 + PIDX + 32       // bypass_network_t = 39
   val FBRW = 183                 // fu_br_reg_t
@@ -30,7 +31,7 @@ class BranchTop(cfg: CpuConfig = CpuConfig()) extends Component {
     val from_ds_valid = in Bool(); val from_ds_ready = out Bool()
     val from_ds_entry_flat = in Bits (EW bits)            // br_rs entry (built in shim)
     val uop_rob_id = in Bits (RIDX bits); val uop_pc = in Bits (32 bits)
-    val uop_fu_opcode = in Bits (4 bits); val uop_ghr = in Bits (GHR bits)
+    val uop_fu_opcode = in Bits (4 bits); val uop_ghr = in Bits (GHR bits); val uop_prov = in Bits (PROV bits)
     val uop_is_compressed = in Bool(); val uop_inst = in Bits (32 bits)
     // to_prf
     val to_prf_rs1_phy = out Bits (PIDX bits); val to_prf_rs2_phy = out Bits (PIDX bits)
@@ -50,6 +51,7 @@ class BranchTop(cfg: CpuConfig = CpuConfig()) extends Component {
     val to_bp_fu_opcode = out Bits (4 bits); val to_bp_branch_taken = out Bool()
     val to_bp_target = out Bits (32 bits); val to_bp_ghr = out Bits (GHR bits)
     val to_bp_is_call = out Bool(); val to_bp_is_ret = out Bool(); val to_bp_is_compressed = out Bool()
+    val to_bp_prov = out Bits (PROV bits)
     // cb_rob_itf.cb to_rob
     val to_rob_rob_id = out Bits (RIDX bits); val to_rob_miss_predict = out Bool()
     val to_rob_target = out Bits (32 bits); val to_rob_ready = out Bool(); val to_rob_dequeue = in Bool()
@@ -74,6 +76,7 @@ class BranchTop(cfg: CpuConfig = CpuConfig()) extends Component {
   cb.io.from_ds_valid := io.from_ds_valid
   cb.io.uop_rob_id := io.uop_rob_id; cb.io.uop_pc := io.uop_pc; cb.io.uop_fu_opcode := io.uop_fu_opcode
   cb.io.uop_ghr := io.uop_ghr; cb.io.uop_is_compressed := io.uop_is_compressed; cb.io.uop_inst := io.uop_inst
+  cb.io.uop_prov := io.uop_prov
   cb.io.branch_ready := branchReady
 
   // ---- internal br_cdb (br_rs -> control_buffer) ----
@@ -101,7 +104,7 @@ class BranchTop(cfg: CpuConfig = CpuConfig()) extends Component {
   io.to_bp_fu_opcode := cb.io.to_bp_fu_opcode; io.to_bp_branch_taken := cb.io.to_bp_branch_taken
   io.to_bp_target := cb.io.to_bp_target; io.to_bp_ghr := cb.io.to_bp_ghr
   io.to_bp_is_call := cb.io.to_bp_is_call; io.to_bp_is_ret := cb.io.to_bp_is_ret
-  io.to_bp_is_compressed := cb.io.to_bp_is_compressed
+  io.to_bp_is_compressed := cb.io.to_bp_is_compressed; io.to_bp_prov := cb.io.to_bp_prov
   io.to_rob_rob_id := cb.io.to_rob_rob_id; io.to_rob_miss_predict := cb.io.to_rob_miss_predict
   io.to_rob_target := cb.io.to_rob_target; io.to_rob_ready := cb.io.to_rob_ready
   cb.io.to_rob_dequeue := io.to_rob_dequeue

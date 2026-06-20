@@ -19,6 +19,7 @@ class InstQueue(cfg: CpuConfig = CpuConfig(), val depth: Int = 8) extends Compon
   val IFW  = cfg.ifWidth       // 4
   val OW   = cfg.idWidth       // 2
   val GHR  = cfg.ghrLen        // 64
+  val PROV = cfg.tageNum * (1 + cfg.tageCtrBits + cfg.tageUBits)   // 24 (per-slot TAGE provider snapshot)
   val DEPTH = depth            // 8
   val AIDX = log2Up(DEPTH)     // 3
   val NC   = 2 * IFW           // 8 candidates
@@ -37,6 +38,7 @@ class InstQueue(cfg: CpuConfig = CpuConfig(), val depth: Int = 8) extends Compon
     val in_pc_flat       = in Bits (IFW * 32 bits)
     val in_valid_slots   = in Bits (IFW bits)
     val in_ghr           = in Bits (GHR bits)
+    val in_prov_flat     = in Bits (IFW * PROV bits)
     // fifo_backend_itf.fifo out (decode_packet_t)
     val out_valid = out Bool(); val out_ready = in Bool()
     val out_inst_flat     = out Bits (OW * 32 bits)
@@ -47,6 +49,7 @@ class InstQueue(cfg: CpuConfig = CpuConfig(), val depth: Int = 8) extends Compon
     val out_pc_flat       = out Bits (OW * 32 bits)
     val out_valid_slots   = out Bits (OW bits)
     val out_ghr_flat      = out Bits (OW * GHR bits)
+    val out_prov_flat     = out Bits (OW * PROV bits)
     val dbg_empty = out Bool()
   }
   noIoPrefix()
@@ -56,6 +59,7 @@ class InstQueue(cfg: CpuConfig = CpuConfig(), val depth: Int = 8) extends Compon
     val is_compressed = Bits(IFW bits); val predict_taken = Bits(IFW bits)
     val predict_target = Vec(Bits(32 bits), IFW); val pc = Vec(Bits(32 bits), IFW)
     val valid = Bits(IFW bits); val ghr = Bits(GHR bits)
+    val prov = Vec(Bits(PROV bits), IFW)
   }
   def isBranch(inst: Bits): Bool = {
     val op = inst(6 downto 0)
@@ -89,27 +93,28 @@ class InstQueue(cfg: CpuConfig = CpuConfig(), val depth: Int = 8) extends Compon
     val cV = Vec(Bool(), NC); val cInst = Vec(Bits(32 bits), NC); val cRaw = Vec(Bits(32 bits), NC)
     val cComp = Vec(Bool(), NC); val cPc = Vec(Bits(32 bits), NC); val cGhr = Vec(Bits(GHR bits), NC)
     val cPt = Vec(Bool(), NC); val cPtgt = Vec(Bits(32 bits), NC); val cBr = Vec(Bool(), NC)
-    val cInh = Vec(Bool(), NC)
+    val cInh = Vec(Bool(), NC); val cProv = Vec(Bits(PROV bits), NC)
     for (s <- 0 until IFW) {
       cInh(s) := True
       cV(s) := haveH && (U(s, AIDX bits) >= rdSlot) && head.valid(s)
       cInst(s) := head.inst(s); cRaw(s) := head.inst_raw(s); cComp(s) := head.is_compressed(s)
       cPc(s) := head.pc(s); cGhr(s) := head.ghr; cPt(s) := head.predict_taken(s)
-      cPtgt(s) := head.predict_target(s); cBr(s) := isBranch(head.inst(s))
+      cPtgt(s) := head.predict_target(s); cBr(s) := isBranch(head.inst(s)); cProv(s) := head.prov(s)
       cInh(IFW + s) := False
       cV(IFW + s) := haveH1 && head1.valid(s)
       cInst(IFW + s) := head1.inst(s); cRaw(IFW + s) := head1.inst_raw(s); cComp(IFW + s) := head1.is_compressed(s)
       cPc(IFW + s) := head1.pc(s); cGhr(IFW + s) := head1.ghr; cPt(IFW + s) := head1.predict_taken(s)
-      cPtgt(IFW + s) := head1.predict_target(s); cBr(IFW + s) := isBranch(head1.inst(s))
+      cPtgt(IFW + s) := head1.predict_target(s); cBr(IFW + s) := isBranch(head1.inst(s)); cProv(IFW + s) := head1.prov(s)
     }
 
     // ---- compact valid candidates into <=OW stream slots ----
     val sInst = Vec(Bits(32 bits), OW); val sRaw = Vec(Bits(32 bits), OW); val sComp = Vec(Bool(), OW)
     val sPc = Vec(Bits(32 bits), OW); val sGhr = Vec(Bits(GHR bits), OW); val sPt = Vec(Bool(), OW)
     val sPtgt = Vec(Bits(32 bits), OW); val sBr = Vec(Bool(), OW); val sSrc = Vec(UInt(SRCW bits), OW)
+    val sProv = Vec(Bits(PROV bits), OW)
     for (i <- 0 until OW) {
       sInst(i) := 0; sRaw(i) := 0; sComp(i) := False; sPc(i) := 0; sGhr(i) := 0
-      sPt(i) := False; sPtgt(i) := 0; sBr(i) := False; sSrc(i) := 0
+      sPt(i) := False; sPtgt(i) := 0; sBr(i) := False; sSrc(i) := 0; sProv(i) := 0
     }
     var k: UInt = U(0, NAVW bits)
     for (j <- 0 until NC) {
@@ -118,7 +123,7 @@ class InstQueue(cfg: CpuConfig = CpuConfig(), val depth: Int = 8) extends Compon
         when(take && (k === slot)) {
           sInst(slot) := cInst(j); sRaw(slot) := cRaw(j); sComp(slot) := cComp(j); sPc(slot) := cPc(j)
           sGhr(slot) := cGhr(j); sPt(slot) := cPt(j); sPtgt(slot) := cPtgt(j); sBr(slot) := cBr(j)
-          sSrc(slot) := U(j, SRCW bits)
+          sProv(slot) := cProv(j); sSrc(slot) := U(j, SRCW bits)
         }
       }
       k = Mux(take, (k + 1).resize(NAVW bits), k)
@@ -146,6 +151,7 @@ class InstQueue(cfg: CpuConfig = CpuConfig(), val depth: Int = 8) extends Compon
     io.out_predict_target_flat := sPtgt.asBits
     io.out_pc_flat := sPc.asBits
     io.out_ghr_flat := sGhr.asBits
+    io.out_prov_flat := sProv.asBits
 
     // ---- advance rd_ptr / rd_slot ----
     val deqFire = io.out_valid && io.out_ready
@@ -184,6 +190,7 @@ class InstQueue(cfg: CpuConfig = CpuConfig(), val depth: Int = 8) extends Compon
     enqData.pc := io.in_pc_flat.subdivideIn(IFW slices)
     enqData.valid := io.in_valid_slots
     enqData.ghr := io.in_ghr
+    enqData.prov := io.in_prov_flat.subdivideIn(IFW slices)
     when(io.in_valid && !full) {
       fifo(wrActual) := enqData
       wrPtr := (wrPtr + 1).resize(AIDX + 1 bits)
