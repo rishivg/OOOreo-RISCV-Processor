@@ -38,8 +38,24 @@ class MemRs(cfg: CpuConfig = CpuConfig()) extends Component {
   }
   noIoPrefix()
 
+  // Balanced OR-reduce (log-depth tree) instead of the linear left-fold `.reduce`,
+  // so the one-hot issue mux feeding the AGU is a depth-ceil(log2 D) tree, not a
+  // depth-(D-1) ripple. Logically identical (OR is associative) -> bit-exact.
+  def balancedOr(terms: collection.Seq[Bits]): Bits =
+    if (terms.length == 1) terms.head
+    else { val (a, b) = terms.splitAt(terms.length / 2); balancedOr(a) | balancedOr(b) }
   def orMux(sel: Bits, data: collection.Seq[Bits]): Bits =
-    data.zipWithIndex.map { case (d, i) => Mux(sel(i), d, B(0, d.getWidth bits)) }.reduce(_ | _)
+    balancedOr(data.zipWithIndex.map { case (d, i) => Mux(sel(i), d, B(0, d.getWidth bits)) })
+
+  // Shared exclusive prefix-OR: out(i) = OR(in(0..i-1)). Computes all D prefixes in
+  // O(D) gates with one running accumulator instead of the original O(D^2) per-index
+  // linear folds (`(0 until i).fold`). Bit-exact (same priority semantics).
+  def exPrefixOr(in: collection.Seq[Bool]): Seq[Bool] = {
+    val out = Array.fill(in.length)(False: Bool)
+    var acc: Bool = False
+    for (i <- in.indices) { out(i) = acc; acc = acc | in(i) }
+    out.toSeq
+  }
 
   val agu = new FuAgu(cfg); agu.io.clk := io.clk; agu.io.rst := io.rst
 
@@ -62,15 +78,11 @@ class MemRs(cfg: CpuConfig = CpuConfig()) extends Component {
 
     val notValid = (0 until D).map(i => !rs_valid(i))
     val doPush = io.from_ds_valid && io.from_ds_ready
-    for (i <- 0 until D) {
-      val freeBelow = (0 until i).map(j => notValid(j)).fold(False)(_ || _)
-      push_en(i) := doPush && notValid(i) && !freeBelow
-    }
+    val freeBelow = exPrefixOr(notValid)                 // push to first free slot
+    for (i <- 0 until D) push_en(i) := doPush && notValid(i) && !freeBelow(i)
     val rs_grant = Vec(Bool(), D)
-    for (i <- 0 until D) {
-      val reqBelow = (0 until i).map(j => rs_request(j)).fold(False)(_ || _)
-      rs_grant(i) := rs_request(i) && !reqBelow
-    }
+    val reqBelow = exPrefixOr((0 until D).map(i => rs_request(i)))   // issue first requester
+    for (i <- 0 until D) rs_grant(i) := rs_request(i) && !reqBelow(i)
 
     for (i <- 0 until D) {
       val e = entries(i)

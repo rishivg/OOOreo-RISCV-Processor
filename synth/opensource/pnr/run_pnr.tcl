@@ -115,6 +115,14 @@ pack_group $block $dbu $dc [um $block 470.0] [um $block 30.0]  $sw $gap   ;# D-c
 pack_group $block $dbu $ot [um $block 30.0]  [um $block 560.0] $sw $gap   ;# divider etc.
 puts "INFO: macros placed (clustered per cache)"
 
+# NOTE: an LSU std-cell fence (dbRegion+dbGroup over memRs/ldq/stq/arb/dc to shorten
+# the AGU-0-stage load-loop nets) was tried and REJECTED: a loose region is silently
+# ignored by gpl (only the Top-level region initializes), and a region tight enough
+# to bind collides with the oversized fakeram macros -- the region inflates fixed
+# area 286k->831k um2 and gpl aborts at 103% utilization (GPL-0301). The load-loop
+# wire buffering is a symptom of the macro-dominated floorplan, not LSU scatter a
+# std-cell fence can fix. The real Fmax lever for that path is re-pipelining the AGU.
+
 # ---------- IO pins ----------
 place_pins -hor_layers metal5 -ver_layers metal6
 
