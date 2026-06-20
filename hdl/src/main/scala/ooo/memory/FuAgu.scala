@@ -56,10 +56,19 @@ class FuAgu(cfg: CpuConfig = CpuConfig()) extends Component {
   val a10 = unaligned_addr(1 downto 0).asUInt                        // byte offset
 
   // ---- store data alignment (unmasked lanes -> 0, matching x-assign fast) ----
+  // The byte offset only takes 4 (SB) / 2 (SH) discrete lane positions, so place the
+  // byte/halfword with an explicit lane mux instead of a 32-bit variable barrel shift
+  // (`|<< a10*8`). Bit-identical to the shift; smaller + off the AGU-0-stage cone.
+  val sb = rs2_value(7 downto 0); val z8 = B(0, 8 bits); val z16 = B(0, 16 bits)
+  val sh = rs2_value(15 downto 0)
   val wdata = Bits(32 bits)
   switch(fu_op) {
-    is(MEM_SB) { wdata := (B(0, 24 bits) ## rs2_value(7 downto 0))  |<< (a10 * 8) }
-    is(MEM_SH) { wdata := (B(0, 16 bits) ## rs2_value(15 downto 0)) |<< (unaligned_addr(1).asUInt * 16) }
+    is(MEM_SB) { wdata := a10.mux(
+                   0       -> (z8  ## z8  ## z8 ## sb),
+                   1       -> (z8  ## z8  ## sb ## z8),
+                   2       -> (z8  ## sb  ## z16),
+                   default -> (sb  ## z8  ## z16)) }          // a10 == 3
+    is(MEM_SH) { wdata := Mux(unaligned_addr(1), sh ## z16, z16 ## sh) }
     is(MEM_SW) { wdata := rs2_value }
     default    { wdata := B(0, 32 bits) }
   }

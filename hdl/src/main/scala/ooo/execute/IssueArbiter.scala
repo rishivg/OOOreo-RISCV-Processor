@@ -32,11 +32,21 @@ class IssueArbiter(cfg: CpuConfig = CpuConfig()) extends Component {
 
   val req = io.rs_request
 
+  // Shared exclusive prefix-OR: out(i) = OR(in(0..i-1)). One running accumulator
+  // instead of D independent `.orR` slices (O(D) gates vs O(D^2)). Bit-identical.
+  def exPrefixOr(in: collection.Seq[Bool]): Seq[Bool] = {
+    val out = Array.fill(in.length)(False: Bool)
+    var acc: Bool = False
+    for (i <- in.indices) { out(i) = acc; acc = acc | in(i) }
+    out.toSeq
+  }
+
   // ge1(j) = any request strictly below j ; second(j) = j is a 2nd-or-later requester
   val ge1    = Vec(Bool(), D)
   val second = Vec(Bool(), D)
+  val ge1Pre = exPrefixOr((0 until D).map(j => req(j)))
   for (j <- 0 until D) {
-    ge1(j)    := (if (j == 0) False else req(j - 1 downto 0).orR)
+    ge1(j)    := ge1Pre(j)
     second(j) := req(j) && ge1(j)
   }
   val secondBits = second.asBits
@@ -46,9 +56,10 @@ class IssueArbiter(cfg: CpuConfig = CpuConfig()) extends Component {
   val fu1   = Vec(Bool(), D)
   val pa0   = Vec(Bool(), D)
   val pa1   = Vec(Bool(), D)
+  val pa1Pre = exPrefixOr((0 until D).map(i => second(i)))
   for (i <- 0 until D) {
     pa0(i) := ge1(i)
-    pa1(i) := (if (i == 0) False else secondBits(i - 1 downto 0).orR)
+    pa1(i) := pa1Pre(i)
     grant(i) := False; fu0(i) := False; fu1(i) := False
     when(!pa0(i) && req(i))      { grant(i) := True; fu0(i) := True }
     .elsewhen(!pa1(i) && req(i)) { grant(i) := True; fu1(i) := True }

@@ -52,8 +52,9 @@ class IntmRs(cfg: CpuConfig = CpuConfig()) extends Component {
   def orMux(sel: Bits, data: collection.Seq[Bits]): Bits =
     data.zipWithIndex.map { case (d, i) => Mux(sel(i), d, B(0, d.getWidth bits)) }.reduce(_ | _)
   def firstOH(req: collection.Seq[Bool]): Vec[Bool] = {
-    val g = Vec(Bool(), req.length)
-    for (i <- req.indices) g(i) := req(i) && !(0 until i).map(req(_)).fold(False)(_ || _)
+    val g = Vec(Bool(), req.length)              // first-requester one-hot
+    var acc: Bool = False                        // shared prefix-OR (O(D) vs O(D^2))
+    for (i <- req.indices) { g(i) := req(i) && !acc; acc = acc | req(i) }
     g
   }
 

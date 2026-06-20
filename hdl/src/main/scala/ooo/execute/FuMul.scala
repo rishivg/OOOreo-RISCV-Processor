@@ -17,7 +17,7 @@ import ooo.CpuConfig
 class FuMul(cfg: CpuConfig = CpuConfig()) extends Component {
   setDefinitionName("fu_mul")
 
-  val MUL_LATENCY = 2
+  val MUL_LATENCY = 1   // was 2: 2nd stage was pure delay (multiply is fully combinational into stage 0)
 
   // mdopc_t (only the MUL family is handled here)
   def MD_MUL    = B"4'b0000"
@@ -107,32 +107,32 @@ class FuMul(cfg: CpuConfig = CpuConfig()) extends Component {
 
     val a = Bits(33 bits)
     val b = Bits(33 bits)
-    val outcome = Bits(32 bits)
-
-    // product available below; forward-declare
-    val product = Bits(66 bits)
+    val isLow = Bool()                              // MD_MUL -> low 32 product bits; MULH* -> high 32
     switch(fu_op) {
-      is(MD_MUL)    { a := as; b := bs; outcome := product(31 downto 0) }
-      is(MD_MULH)   { a := as; b := bs; outcome := product(63 downto 32) }
-      is(MD_MULHSU) { a := as; b := bu; outcome := product(63 downto 32) }
-      is(MD_MULHU)  { a := au; b := bu; outcome := product(63 downto 32) }
-      default       { a := B(0, 33 bits); b := B(0, 33 bits); outcome := B(0, 32 bits) }
+      is(MD_MUL)    { a := as; b := bs; isLow := True }
+      is(MD_MULH)   { a := as; b := bs; isLow := False }
+      is(MD_MULHSU) { a := as; b := bu; isLow := False }
+      is(MD_MULHU)  { a := au; b := bu; isLow := False }
+      default       { a := B(0, 33 bits); b := B(0, 33 bits); isLow := True }
     }
     val product_comb = (a.asSInt * b.asSInt).asBits   // 66b signed product
+    // Select the 32-bit result BEFORE the pipe so the pipeline carries 32b not 66b
+    // (and the unused product bits [65:64] + the dropped half prune). Bit-identical.
+    val outcome_comb = Mux(isLow, product_comb(31 downto 0), product_comb(63 downto 32))
 
     // ===== pipeline (MUL_LATENCY stages), freezes on output_stall =====
     val output_stall = nxt_valid && !io.nxt_ready
-    val product_pipe = Vec.fill(MUL_LATENCY)(Reg(Bits(66 bits)))
+    val outcome_pipe = Vec.fill(MUL_LATENCY)(Reg(Bits(32 bits)))
     val valid_pipe   = Vec.fill(MUL_LATENCY)(RegInit(False))
     when(!output_stall) {
-      product_pipe(0) := product_comb
+      outcome_pipe(0) := outcome_comb
       valid_pipe(0)   := mulStart
       for (i <- 1 until MUL_LATENCY) {
-        product_pipe(i) := product_pipe(i - 1)
+        outcome_pipe(i) := outcome_pipe(i - 1)
         valid_pipe(i)   := valid_pipe(i - 1)
       }
     }
-    product := product_pipe(MUL_LATENCY - 1)
+    val outcome = outcome_pipe(MUL_LATENCY - 1)
     val complete = valid_pipe(MUL_LATENCY - 1)
 
     nxt_valid := reg_valid && complete && !mulStart

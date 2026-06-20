@@ -69,20 +69,21 @@ class BrRs(cfg: CpuConfig = CpuConfig()) extends Component {
     val rs_bypass  = Vec(BypassT(), D)
     val push_en    = Vec(Bool(), D)
 
+    // shared exclusive prefix-OR: out(i)=OR(in(0..i-1)) (O(D) vs O(D^2) per-slot folds)
+    def exPrefixOr(in: collection.Seq[Bool]): Seq[Bool] = {
+      val out = Array.fill(in.length)(False: Bool); var acc: Bool = False
+      for (i <- in.indices) { out(i) = acc; acc = acc | in(i) }; out.toSeq
+    }
     // push: first free slot (lowest i with !rs_valid)
     val notValid = (0 until D).map(i => !rs_valid(i))
     val doPush = io.from_ds_valid && io.branch_ready
-    for (i <- 0 until D) {
-      val freeBelow = (0 until i).map(j => notValid(j)).fold(False)(_ || _)
-      push_en(i) := doPush && notValid(i) && !freeBelow
-    }
+    val freeBelow = exPrefixOr(notValid)
+    for (i <- 0 until D) push_en(i) := doPush && notValid(i) && !freeBelow(i)
 
     // issue: first requesting slot
     val rs_grant = Vec(Bool(), D)
-    for (i <- 0 until D) {
-      val reqBelow = (0 until i).map(j => rs_request(j)).fold(False)(_ || _)
-      rs_grant(i) := rs_request(i) && !reqBelow
-    }
+    val reqBelow = exPrefixOr((0 until D).map(i => rs_request(i)))
+    for (i <- 0 until D) rs_grant(i) := rs_request(i) && !reqBelow(i)
 
     for (i <- 0 until D) {
       val e = entries(i)
