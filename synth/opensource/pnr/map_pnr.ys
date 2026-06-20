@@ -20,6 +20,16 @@ delete cpu/w:rvfi_flat
 delete backend_top_spinal/w:rvfi_itf_flat
 delete rob_spinal/w:rvfi_itf_flat
 opt_clean -purge
+# Clock-gating: the SpinalHDL core uses enable-Regs everywhere (predictor tables,
+# RS entries, ROB, LSU queues), which without ICGs synthesize to DFF + a per-flop
+# recirculation MUX2 (the netlist had ~34k MUX2_X1 ~= one per flop). `clockgate`
+# folds each shared clock+enable FF group into one Nangate45 CLKGATE ICG + a set of
+# enable-less DFFs: removes those recirc muxes (area) and gates idle clocking
+# (power). -min_net_size 4 gates only meaningful arrays (skips singletons where the
+# ICG overhead isn't worth it). Functionally identical -> 0 IPC. Must run while FFs
+# still carry their CE (before dfflibmap maps them to library DFFs).
+clockgate -liberty /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib -min_net_size 4
+opt_clean -purge
 # Use the Nangate45 liberty shipped in the OpenROAD docker (this runs in that
 # image) so no multi-MB .lib needs to live in the repo.
 dfflibmap -liberty /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib

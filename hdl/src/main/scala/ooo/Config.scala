@@ -24,15 +24,15 @@ case class CpuConfig(
   arfDepth: Int = 32, // [ARF_DEPTH]
 
   // ---- reservation stations / control buffer ----
-  intrsDepth:  Int = 16, // [INTRS_DEPTH]
+  intrsDepth:  Int = 12, // right-sized 16->12 (knee: imc -0.012%; 10=-0.069%, 8=-0.11%)
   intmrsDepth: Int = 4,  // [INTMRS_DEPTH]
   brrsDepth:   Int = 4,  // [BRRS_DEPTH]
   memrsDepth:  Int = 8,  // [MEMRS_DEPTH]
   cbDepth:     Int = 8,  // [CB_DEPTH]
 
-  // ---- LSU queues ----
-  ldqDepth: Int = 8, // [LDQ_DEPTH]
-  stqDepth: Int = 8, // [STQ_DEPTH]
+  // ---- LSU queues (must be power-of-2: pointer wrap assumes 2^idx; 6 hangs) ----
+  ldqDepth: Int = 4, // right-sized 8->4 (imc -0.023%, CoreMark MLP-bound <4; shrinks 8x8->4x4 disambig)
+  stqDepth: Int = 4, // right-sized 8->4 (pairs with ldq; same disambig-matrix shrink)
   stbDepth: Int = 4, // [STB_DEPTH]
 
   // ---- execute ----
@@ -46,7 +46,7 @@ case class CpuConfig(
   ubtbTagIdx:  Int = 20,   // [UBTB_TAG_IDX]
   ftbDepth:    Int = 64,   // [FTB_DEPTH]
   ftbTagBits:  Int = 20,   // [FTB_TAG_BITS]
-  rasDepth:    Int = 16,   // [RAS_DEPTH]
+  rasDepth:    Int = 8,    // right-sized 16->8 (bit-identical; CoreMark call nesting <8; 4 also bit-identical)
   ghrLen:      Int = 64,   // [GHR_LEN]
   tageNum:     Int = 4,    // [TAGE_NUM]
   tageDepth:   Int = 128,  // A1: 256->128 = -0.19% imc for ~-9% core area (64 cost -1.4% imc; 128 is the imc knee)
