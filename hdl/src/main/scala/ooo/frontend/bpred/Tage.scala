@@ -3,6 +3,20 @@ package ooo.frontend.bpred
 import spinal.core._
 import ooo.CpuConfig
 
+/** Single-port-array model for a block-read TAGE table bank (1R1W): 64 rows x 112b.
+  * Combinational read (predict) + synchronous bit-masked write (commit). Sim model in
+  * sram/output/tage_bank_array; P&R maps it via macro_wrappers.v -> fakeram45_64x124. */
+class TageBank(addrW: Int, dw: Int) extends BlackBox {
+  setBlackBoxName("tage_bank_array")
+  val io = new Bundle {
+    val clk   = in  Bool()
+    val re    = in  Bool();        val raddr = in  Bits(addrW bits); val rdata = out Bits(dw bits)
+    val we    = in  Bool();        val waddr = in  Bits(addrW bits)
+    val wdata = in  Bits(dw bits); val wmask = in  Bits(dw bits)
+  }
+  noIoPrefix()
+}
+
 /** SpinalHDL port of `hdl/frontend/branch_predictor/tage.sv` -- the TAGE direction
   * predictor: a bimodal base + TAGE_NUM tagged components with geometric history
   * lengths, spec/commit global history, use_alt_on_newly_allocated policy counter,
@@ -104,6 +118,20 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
   def blkIdx(pc: Bits, fidx: Bits): Bits = pc(TIDX + LZ - 1 downto LZ) ^ fidx
   def laneOf(pc: Bits): UInt = pc(LZ - 1 downto 1).asUInt
 
+  // SRAM banking: bank = blkIdx[0] (consecutive blocks A/B always differ in blkIdx LSB
+  // -> opposite banks -> 2 parallel reads), within-bank addr = blkIdx[TIDX-1:1].
+  val EW    = TAGB + CTRB + UB     // 14  (per-lane entry {tag,ctr,u})
+  val DW    = LANES * EW           // 112 (row width)
+  val ADDRW = TIDX - 1            // 6   (rows/bank = TDEPTH/2 = 64)
+  def laneEntry(row: Bits, lane: UInt): TageEntry = {
+    val sel = row.subdivideIn(LANES slices)(lane)   // EW bits {tag,ctr,u}
+    val e = TageEntry()
+    e.tag := sel(EW - 1 downto CTRB + UB)
+    e.ctr := sel(CTRB + UB - 1 downto UB).asSInt
+    e.u   := sel(UB - 1 downto 0).asUInt
+    e
+  }
+
   def ctrUpd(c: SInt, taken: Bool): SInt = {
     val maxv = S((1 << (CTRB - 1)) - 1, CTRB bits)   // +3
     val minv = S(-(1 << (CTRB - 1)), CTRB bits)      // -4
@@ -128,8 +156,12 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     val bimodal = Vec.fill(PHTD)(RegInit(U(1, 2 bits)))                 // base predictor (init 01; reset kept -- stripping it perturbs warm-up IPC)
     // tagged tables self-correct (a stale tag just mispredicts, then is overwritten)
     // -> no reset: drops ~NUM*TDEPTH*entryW reset flops off the predictor.
-    // block-read tables: TDEPTH rows x LANES per-slot entries (Phase 1: flops).
-    val tt = Array.tabulate(NUM)(_ => Vec.fill(TDEPTH)(Vec.fill(LANES)(Reg(TageEntry()))))
+    // block-read tables -> per-table even/odd SRAM banks (1R1W): bank=blkIdx[0],
+    // addr=blkIdx[TIDX-1:1]. Predict reads BOTH banks (rowA/rowB land in opposite banks
+    // since consecutive blocks differ in blkIdx LSB); commit writes one bank (masked,
+    // single lane). Phase 3c: replaces the Phase-1 flop tables -> SRAM area/FF/LUT win.
+    val bank = Array.tabulate(NUM)(_ => Array.fill(2)(new TageBank(ADDRW, DW)))
+    for (t <- 0 until NUM; b <- 0 until 2) { bank(t)(b).io.clk := io.clk; bank(t)(b).io.re := True }
 
     io.ghr_snapshot := ghrSpec
 
@@ -164,8 +196,17 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     // next block's row (B); each slot picks the row of ITS block, then its in-block
     // halfword lane. 2 row-reads/table (vs the per-slot 4) -- straddle-correct.
     val blkBpc = (instPc(0).asUInt + U(1 << LZ, 32 bits)).asBits   // next 16B block
-    val rowA = Array.tabulate(NUM)(t => tt(t)(blkIdx(instPc(0), fidxSpec(t)).asUInt))
-    val rowB = Array.tabulate(NUM)(t => tt(t)(blkIdx(blkBpc,    fidxSpec(t)).asUInt))
+    // bank reads: A and B always map to opposite banks (blkIdx LSB differs); bank0 reads
+    // whichever of A/B has bank-bit 0, bank1 the other; route rdata back to rowA/rowB.
+    val bankA = Array.tabulate(NUM)(t => blkIdx(instPc(0), fidxSpec(t))(0))
+    for (t <- 0 until NUM) {
+      val idxA = blkIdx(instPc(0), fidxSpec(t)); val idxB = blkIdx(blkBpc, fidxSpec(t))
+      val addrA = idxA(TIDX - 1 downto 1); val addrB = idxB(TIDX - 1 downto 1)
+      bank(t)(0).io.raddr := Mux(bankA(t) === False, addrA, addrB)
+      bank(t)(1).io.raddr := Mux(bankA(t) === False, addrB, addrA)
+    }
+    val rowA = Array.tabulate(NUM)(t => Mux(bankA(t) === False, bank(t)(0).io.rdata, bank(t)(1).io.rdata))
+    val rowB = Array.tabulate(NUM)(t => Mux(bankA(t) === False, bank(t)(1).io.rdata, bank(t)(0).io.rdata))
     val ptaken = Vec(Bool(), IFW)
     val snap   = Vec(Bits(NUM * PB bits), IFW)   // per-slot {hit,ctr,u}xNUM, table t at [t*PB +: PB]
     for (i <- 0 until IFW) {
@@ -175,7 +216,7 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
       val pEnt = Vec(TageEntry(), NUM)
       val pHit = Vec(Bool(), NUM)
       for (t <- 0 until NUM) {
-        pEnt(t) := Mux(inB, rowB(t), rowA(t))(laneOf(pc))
+        pEnt(t) := laneEntry(Mux(inB, rowB(t), rowA(t)), laneOf(pc))
         pHit(t) := pEnt(t).tag === tagComb(pc, ftagSpec(t))
       }
       // snapshot the predict-time provider entries (per table: {hit, ctr, u}); decoded
@@ -273,26 +314,52 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
       }
     }
 
-    // ===== gated tables (write only at commit; rst via RegInit) =====
+    // ===== bimodal base write (small -> stays in flops) =====
     when(io.from_cb_update_en) {
       when(!uProvV) {
         when(uTaken) { bimodal(bimWidx) := Mux(bimodal(bimWidx) === 3, bimodal(bimWidx), (bimodal(bimWidx) + 1).resize(2 bits)) }
         .otherwise   { bimodal(bimWidx) := Mux(bimodal(bimWidx) === 0, bimodal(bimWidx), (bimodal(bimWidx) - 1).resize(2 bits)) }
       }
-      for (t <- 0 until NUM) {
-        when(uProvV && (U(t, PROVW bits) === uProvIdx)) {
-          tt(t)(uIdx(t))(uLane).ctr := ctrUpd(uEnt(t).ctr, uTaken)
-          when(uProvPred =/= uAltPred) {
-            when(uProvPred === uTaken) { tt(t)(uIdx(t))(uLane).u := uInc(uEnt(t).u) }
-            .otherwise                 { tt(t)(uIdx(t))(uLane).u := uDec(uEnt(t).u) }
-          }
-        }.elsewhen(mispredict && allocValid && (U(t, PROVW bits) === allocTable)) {
-          tt(t)(uIdx(t))(uLane).tag := tagComb(io.from_cb_pc, ftagC(t))
-          tt(t)(uIdx(t))(uLane).ctr := Mux(uTaken, S(0, CTRB bits), S(-1, CTRB bits))
-          tt(t)(uIdx(t))(uLane).u   := U(0, UB bits)
-        }.elsewhen(mispredict && !allocValid && (U(t, 3 bits) >= allocStart)) {
-          tt(t)(uIdx(t))(uLane).u := uDec(uEnt(t).u)
+    }
+
+    // ===== tagged-table SRAM bank writes (commit-gated, masked single lane at uLane) =====
+    // Per-FIELD mask: provider updates ctr(+u), alloc writes the full lane, the aged path
+    // writes u only. tag for non-alloc is masked off so it's preserved (uEnt.tag is unused
+    // -- the forward-state snapshot carries no tag). Same 3 cases as the flop version.
+    for (t <- 0 until NUM) {
+      val newTag = Bits(TAGB bits); val newCtr = SInt(CTRB bits); val newU = UInt(UB bits)
+      val tagWr = Bool(); val ctrWr = Bool(); val uWr = Bool()
+      newTag := uEnt(t).tag; newCtr := uEnt(t).ctr; newU := uEnt(t).u
+      tagWr := False; ctrWr := False; uWr := False
+      when(uProvV && (U(t, PROVW bits) === uProvIdx)) {
+        newCtr := ctrUpd(uEnt(t).ctr, uTaken); ctrWr := True
+        when(uProvPred =/= uAltPred) {
+          newU := Mux(uProvPred === uTaken, uInc(uEnt(t).u), uDec(uEnt(t).u)); uWr := True
         }
+      }.elsewhen(mispredict && allocValid && (U(t, PROVW bits) === allocTable)) {
+        newTag := tagComb(io.from_cb_pc, ftagC(t))
+        newCtr := Mux(uTaken, S(0, CTRB bits), S(-1, CTRB bits)); newU := U(0, UB bits)
+        tagWr := True; ctrWr := True; uWr := True
+      }.elsewhen(mispredict && !allocValid && (U(t, 3 bits) >= allocStart)) {
+        newU := uDec(uEnt(t).u); uWr := True
+      }
+      val doWr = io.from_cb_update_en && (tagWr || ctrWr || uWr)
+      val laneData = newTag ## newCtr.asBits ## newU.asBits
+      val laneMask = Mux(tagWr, B((1 << TAGB) - 1, TAGB bits), B(0, TAGB bits)) ##
+                     Mux(ctrWr, B((1 << CTRB) - 1, CTRB bits), B(0, CTRB bits)) ##
+                     Mux(uWr,   B((1 << UB)   - 1, UB   bits), B(0, UB   bits))
+      val rowData = Vec(Bits(EW bits), LANES); val rowMask = Vec(Bits(EW bits), LANES)
+      for (k <- 0 until LANES) {
+        rowData(k) := laneData
+        rowMask(k) := Mux(uLane === U(k, log2Up(LANES) bits), laneMask, B(0, EW bits))
+      }
+      val bankW = uIdx(t)(0)
+      val addrW = uIdx(t)(TIDX - 1 downto 1).asBits
+      for (b <- 0 until 2) {
+        bank(t)(b).io.we    := doWr && (if (b == 0) (bankW === False) else (bankW === True))
+        bank(t)(b).io.waddr := addrW
+        bank(t)(b).io.wdata := rowData.asBits
+        bank(t)(b).io.wmask := rowMask.asBits
       }
     }
   }

@@ -72,3 +72,21 @@ module icache_tag_array #(parameter ADDR_WIDTH = 6)
     .clk(clk0), .ce_in(csb0), .we_in(web0),
     .addr_in(6'(addr0)), .wd_in({8'b0, din0}), .w_mask_in(32'hFFFFFFFF), .rd_out(rd));
 endmodule
+
+// Block-read TAGE table bank: 64 rows x 112b (8 lanes x 14b) -> fakeram45_64x124
+// (1 macro/bank, 8 banks = 2 per table x NUM=4). The RTL bank is 1R1W (read=predict,
+// write=commit); mapped here to a single-port macro with addr-mux (we ? waddr : raddr).
+// AREA-measurement model: a real build needs a 1R1W macro (or sync-read + bank conflict
+// handling) -- see Phase 3c notes. ce_in tied active (read every cycle).
+module tage_bank_array(clk, re, raddr, rdata, we, waddr, wdata, wmask);
+  input clk, re, we;
+  input  [5:0]   raddr, waddr;
+  input  [111:0] wdata, wmask;
+  output [111:0] rdata;
+  wire [123:0] rd;
+  assign rdata = rd[111:0];
+  fakeram45_64x124 u_ram (
+    .clk(clk), .ce_in(1'b0), .we_in(~we),
+    .addr_in(we ? waddr : raddr),
+    .wd_in({12'b0, wdata}), .w_mask_in({12'b0, wmask}), .rd_out(rd));
+endmodule
