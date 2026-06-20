@@ -86,6 +86,18 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     (pc(TAGB + 1 downto 3) ## (pc(2) ^ pc(1))) ^ ftag ^ pc(2 * TAGB + 1 downto TAGB + 2)
   def bidx(pc: Bits): Bits = pc(PHTI + 1 downto 3) ## (pc(2) ^ pc(1))
 
+  // ---- block-read (read-once-per-fetch-block) organization ----
+  // Index each tagged table ONCE per fetch block by the block-aligned PC (drop the
+  // in-block offset pc[LZ-1:0]) XOR the folded history; the row holds LANES=2*IFW
+  // per-slot lanes selected by the in-block halfword offset. Per-slot TAGS stay
+  // full-PC (tagComb) so multi-branch blocks remain disambiguated. Collapses the 4
+  // slot-reads/table to 1 row-read/table -- the predictors->SRAM enabler (Phase 1:
+  // FLOPS, validates the algorithm's IPC; Phase 3 swaps the row store to an SRAM macro).
+  val LZ    = log2Up(IFW * 4)     // 4  (in-block byte-addr width)
+  val LANES = 2 * IFW             // 8  (in-block halfword lanes)
+  def blkIdx(pc: Bits, fidx: Bits): Bits = pc(TIDX + LZ - 1 downto LZ) ^ fidx
+  def laneOf(pc: Bits): UInt = pc(LZ - 1 downto 1).asUInt
+
   def ctrUpd(c: SInt, taken: Bool): SInt = {
     val maxv = S((1 << (CTRB - 1)) - 1, CTRB bits)   // +3
     val minv = S(-(1 << (CTRB - 1)), CTRB bits)      // -4
@@ -110,7 +122,8 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     val bimodal = Vec.fill(PHTD)(RegInit(U(1, 2 bits)))                 // base predictor (init 01; reset kept -- stripping it perturbs warm-up IPC)
     // tagged tables self-correct (a stale tag just mispredicts, then is overwritten)
     // -> no reset: drops ~NUM*TDEPTH*entryW reset flops off the predictor.
-    val tt = Array.tabulate(NUM)(_ => Vec.fill(TDEPTH)(Reg(TageEntry())))
+    // block-read tables: TDEPTH rows x LANES per-slot entries (Phase 1: flops).
+    val tt = Array.tabulate(NUM)(_ => Vec.fill(TDEPTH)(Vec.fill(LANES)(Reg(TageEntry()))))
 
     io.ghr_snapshot := ghrSpec
 
@@ -139,15 +152,23 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     val fidxC = (0 until NUM).map(t => foldGen(io.from_cb_ghr, HIST(t), TIDX))
     val ftagC = (0 until NUM).map(t => foldGen(io.from_cb_ghr, HIST(t), TAGB))
 
-    // ===== prediction (one lookup per fetch slot) =====
+    // ===== prediction =====
+    // 2-block read: a fetch window can straddle the 16-byte block boundary (esp. RVC
+    // mid-block starts after taken branches), so read the fetch block's row (A) AND the
+    // next block's row (B); each slot picks the row of ITS block, then its in-block
+    // halfword lane. 2 row-reads/table (vs the per-slot 4) -- straddle-correct.
+    val blkBpc = (instPc(0).asUInt + U(1 << LZ, 32 bits)).asBits   // next 16B block
+    val rowA = Array.tabulate(NUM)(t => tt(t)(blkIdx(instPc(0), fidxSpec(t)).asUInt))
+    val rowB = Array.tabulate(NUM)(t => tt(t)(blkIdx(blkBpc,    fidxSpec(t)).asUInt))
     val ptaken = Vec(Bool(), IFW)
     for (i <- 0 until IFW) {
       val pc = instPc(i)
+      val inB = pc(31 downto LZ) =/= instPc(0)(31 downto LZ)       // slot in the next block?
       val basePred = bimodal(bidx(pc).asUInt) >= U(2)
       val pEnt = Vec(TageEntry(), NUM)
       val pHit = Vec(Bool(), NUM)
       for (t <- 0 until NUM) {
-        pEnt(t) := tt(t)(idxComb(pc, fidxSpec(t)).asUInt)
+        pEnt(t) := Mux(inB, rowB(t), rowA(t))(laneOf(pc))
         pHit(t) := pEnt(t).tag === tagComb(pc, ftagSpec(t))
       }
       var provV: Bool   = False
@@ -172,12 +193,13 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     val bimWidx   = bidx(io.from_cb_pc).asUInt
     val basePredC = bimodal(bimWidx) >= U(2)
 
-    val uIdx = Vec(UInt(TIDX bits), NUM)
-    val uEnt = Vec(TageEntry(), NUM)
-    val uHit = Vec(Bool(), NUM)
+    val uIdx  = Vec(UInt(TIDX bits), NUM)
+    val uLane = laneOf(io.from_cb_pc)
+    val uEnt  = Vec(TageEntry(), NUM)
+    val uHit  = Vec(Bool(), NUM)
     for (t <- 0 until NUM) {
-      uIdx(t) := idxComb(io.from_cb_pc, fidxC(t)).asUInt
-      uEnt(t) := tt(t)(uIdx(t))
+      uIdx(t) := blkIdx(io.from_cb_pc, fidxC(t)).asUInt
+      uEnt(t) := tt(t)(uIdx(t))(uLane)
       uHit(t) := uEnt(t).tag === tagComb(io.from_cb_pc, ftagC(t))
     }
 
@@ -242,17 +264,17 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
       }
       for (t <- 0 until NUM) {
         when(uProvV && (U(t, PROVW bits) === uProvIdx)) {
-          tt(t)(uIdx(t)).ctr := ctrUpd(uEnt(t).ctr, uTaken)
+          tt(t)(uIdx(t))(uLane).ctr := ctrUpd(uEnt(t).ctr, uTaken)
           when(uProvPred =/= uAltPred) {
-            when(uProvPred === uTaken) { tt(t)(uIdx(t)).u := uInc(uEnt(t).u) }
-            .otherwise                 { tt(t)(uIdx(t)).u := uDec(uEnt(t).u) }
+            when(uProvPred === uTaken) { tt(t)(uIdx(t))(uLane).u := uInc(uEnt(t).u) }
+            .otherwise                 { tt(t)(uIdx(t))(uLane).u := uDec(uEnt(t).u) }
           }
         }.elsewhen(mispredict && allocValid && (U(t, PROVW bits) === allocTable)) {
-          tt(t)(uIdx(t)).tag := tagComb(io.from_cb_pc, ftagC(t))
-          tt(t)(uIdx(t)).ctr := Mux(uTaken, S(0, CTRB bits), S(-1, CTRB bits))
-          tt(t)(uIdx(t)).u   := U(0, UB bits)
+          tt(t)(uIdx(t))(uLane).tag := tagComb(io.from_cb_pc, ftagC(t))
+          tt(t)(uIdx(t))(uLane).ctr := Mux(uTaken, S(0, CTRB bits), S(-1, CTRB bits))
+          tt(t)(uIdx(t))(uLane).u   := U(0, UB bits)
         }.elsewhen(mispredict && !allocValid && (U(t, 3 bits) >= allocStart)) {
-          tt(t)(uIdx(t)).u := uDec(uEnt(t).u)
+          tt(t)(uIdx(t))(uLane).u := uDec(uEnt(t).u)
         }
       }
     }
