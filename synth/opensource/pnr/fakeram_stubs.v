@@ -40,7 +40,7 @@ module fakeram45_64x32(clk, ce_in, we_in, addr_in, wd_in, w_mask_in, rd_out);   
 endmodule
 
 (* blackbox *)
-module fakeram45_64x124(clk, ce_in, we_in, addr_in, wd_in, w_mask_in, rd_out);  // TAGE bank
+module fakeram45_64x112(clk, ce_in, we_in, addr_in, wd_in, w_mask_in, rd_out);  // TAGE bank (right-sized)
   input clk, ce_in, we_in;
   input  [5:0]   addr_in;
   input  [123:0] wd_in;

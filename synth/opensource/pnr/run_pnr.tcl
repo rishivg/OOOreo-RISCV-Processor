@@ -21,7 +21,7 @@ read_liberty $DIR/fakeram/fakeram45_64x256.lib   ;# I$ data (64 sets)
 read_liberty $DIR/fakeram/fakeram45_16x256.lib   ;# D$ data (16 sets)
 read_liberty $DIR/fakeram/fakeram45_16x32.lib    ;# D$ tag  (16 sets)
 read_liberty $PLAT/lib/fakeram45_64x32.lib       ;# I$ tag  (64 sets, already right-sized)
-read_liberty $PLAT/lib/fakeram45_64x124.lib      ;# TAGE table banks (8x: 2/table x NUM=4)
+read_liberty $DIR/fakeram/fakeram45_64x112.lib   ;# TAGE table banks (8x: 2/table x NUM=4, right-sized)
 read_liberty $DIR/div_fake.lib
 
 # ---------- lef ----------
@@ -31,7 +31,7 @@ read_lef $DIR/fakeram/fakeram45_64x256.lef
 read_lef $DIR/fakeram/fakeram45_16x256.lef
 read_lef $DIR/fakeram/fakeram45_16x32.lef
 read_lef $PLAT/lef/fakeram45_64x32.lef
-read_lef $PLAT/lef/fakeram45_64x124.lef          ;# TAGE table banks
+read_lef $DIR/fakeram/fakeram45_64x112.lef       ;# TAGE table banks (right-sized)
 read_lef $DIR/div_fake.lef
 
 # ---------- design ----------

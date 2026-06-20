@@ -85,7 +85,7 @@ module tage_bank_array(clk, re, raddr, rdata, we, waddr, wdata, wmask);
   output [111:0] rdata;
   wire [123:0] rd;
   assign rdata = rd[111:0];
-  fakeram45_64x124 u_ram (
+  fakeram45_64x112 u_ram (              // right-sized: bank uses 112 of the 124 width
     .clk(clk), .ce_in(1'b0), .we_in(~we),
     .addr_in(we ? waddr : raddr),
     .wd_in({12'b0, wdata}), .w_mask_in({12'b0, wmask}), .rd_out(rd));
