@@ -20,13 +20,13 @@ module dcache_data_array(vdd, gnd, clk0, csb0, web0, addr0, wmask0, din0, dout0)
   generate for (i = 0; i < 256; i = i + 1) begin : g_wmask
     assign wmask_bit[i] = wmask0[i/8];   // expand byte mask -> per-bit mask
   end endgenerate
-  fakeram45_128x256 u_ram (
+  fakeram45_16x256 u_ram (              // right-sized: D$ is 16 sets (was 128-deep macro)
     .clk(clk0), .ce_in(csb0), .we_in(web0),
     .addr_in({3'b0, addr0}), .wd_in(din0), .w_mask_in(wmask_bit), .rd_out(dout0));
 endmodule
 
-// I-cache is 64 sets (I_SET_IDX=6) -> 6-bit addr; fakeram45_128x256 (128 deep)
-// fits. ADDR_WIDTH param absorbs the icache's #(.ADDR_WIDTH(SET_IDX)) override.
+// I-cache is 64 sets (I_SET_IDX=6) -> 6-bit addr; right-sized fakeram45_64x256
+// (was the 128-deep macro). ADDR_WIDTH param absorbs the #(.ADDR_WIDTH(SET_IDX)).
 module icache_data_array #(parameter ADDR_WIDTH = 6)
   (vdd, gnd, clk0, csb0, web0, addr0, wmask0, din0, dout0);
   inout vdd; inout gnd;
@@ -40,7 +40,7 @@ module icache_data_array #(parameter ADDR_WIDTH = 6)
   generate for (i = 0; i < 256; i = i + 1) begin : g_wmask
     assign wmask_bit[i] = wmask0[i/8];
   end endgenerate
-  fakeram45_128x256 u_ram (              // 128 deep -> addr_in[6:0], zero-extend
+  fakeram45_64x256 u_ram (              // 64-deep (right-sized) -> addr_in[6:0], zero-extend
     .clk(clk0), .ce_in(csb0), .we_in(web0),
     .addr_in(7'(addr0)), .wd_in(din0), .w_mask_in(wmask_bit), .rd_out(dout0));
 endmodule
@@ -53,7 +53,7 @@ module dcache_tag_array(vdd, gnd, clk0, csb0, web0, addr0, din0, dout0);
   output [24:0] dout0;
   wire [31:0] rd;
   assign dout0 = rd[24:0];
-  fakeram45_32x32 u_ram (
+  fakeram45_16x32 u_ram (              // right-sized: D$ tag is 16 sets (was 32-deep macro)
     .clk(clk0), .ce_in(csb0), .we_in(web0),
     .addr_in({1'b0, addr0}), .wd_in({7'b0, din0}), .w_mask_in(32'hFFFFFFFF), .rd_out(rd));
 endmodule

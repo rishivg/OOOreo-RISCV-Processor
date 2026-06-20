@@ -15,16 +15,20 @@ set DIR  synth/opensource/pnr
 
 # ---------- liberty ----------
 read_liberty $PLAT/lib/NangateOpenCellLibrary_typical.lib
-read_liberty $PLAT/lib/fakeram45_128x256.lib
-read_liberty $PLAT/lib/fakeram45_32x32.lib
-read_liberty $PLAT/lib/fakeram45_64x32.lib
+# right-sized cache fakerams (hand-scaled to the actual geometry; the stock 128x256/
+# 32x32 macros over-provisioned the I$ 64-set / D$ 16-set arrays ~2-8x). See fakeram/.
+read_liberty $DIR/fakeram/fakeram45_64x256.lib   ;# I$ data (64 sets)
+read_liberty $DIR/fakeram/fakeram45_16x256.lib   ;# D$ data (16 sets)
+read_liberty $DIR/fakeram/fakeram45_16x32.lib    ;# D$ tag  (16 sets)
+read_liberty $PLAT/lib/fakeram45_64x32.lib       ;# I$ tag  (64 sets, already right-sized)
 read_liberty $DIR/div_fake.lib
 
 # ---------- lef ----------
 read_lef $PLAT/lef/NangateOpenCellLibrary.tech.lef
 read_lef $PLAT/lef/NangateOpenCellLibrary.macro.mod.lef
-read_lef $PLAT/lef/fakeram45_128x256.lef
-read_lef $PLAT/lef/fakeram45_32x32.lef
+read_lef $DIR/fakeram/fakeram45_64x256.lef
+read_lef $DIR/fakeram/fakeram45_16x256.lef
+read_lef $DIR/fakeram/fakeram45_16x32.lef
 read_lef $PLAT/lef/fakeram45_64x32.lef
 read_lef $DIR/div_fake.lef
 
