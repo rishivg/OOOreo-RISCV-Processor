@@ -41,7 +41,7 @@ case class CpuConfig(
   numFastBypass: Int = 2, // [NUM_FAST_BYPASS]
 
   // ---- branch prediction ----
-  phtDepth:    Int = 1024, // [PHT_DEPTH]
+  phtDepth:    Int = 1024, // TAGE bimodal base (512 measured -0.13% imc -> past the knee; kept at 1024)
   ubtbDepth:   Int = 64,   // [UBTB_DEPTH]
   ubtbTagIdx:  Int = 20,   // [UBTB_TAG_IDX]
   ftbDepth:    Int = 64,   // [FTB_DEPTH]

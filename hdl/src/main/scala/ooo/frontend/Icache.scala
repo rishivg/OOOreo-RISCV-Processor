@@ -44,6 +44,7 @@ class Icache(cfg: CpuConfig = CpuConfig()) extends Component {
   val TAG  = cfg.iTagIdx       // 21
   val TAW  = TAG + 1           // 22 ({epoch, tag})
   val PLRU = WAYS - 1          // 3
+  val LZ_OFF = log2Up(IFW * 4) // block byte-offset bits (4); ufp_addr is block-aligned
 
   val io = new Bundle {
     val clk = in Bool(); val rst = in Bool()
@@ -143,8 +144,14 @@ class Icache(cfg: CpuConfig = CpuConfig()) extends Component {
 
     // PROCESS stage / ufp
     io.dfp_wdata := B(0, 256 bits)
+    // ufp_addr is always IF_BLK_SIZE-aligned (If1Stage.blkPcNext zeros bits [LZ-1:0]),
+    // so srOffset is always a multiple of IFW*4 -> the read is just a block-within-line
+    // select, NOT a byte-granular barrel shift. Picking the IFW*32-bit block by
+    // srOffset(OFFW-1 downto LZ) collapses four 256:1 byte-muxes (+ a *8 multiply) to a
+    // (line/block)-way block mux. Bit-identical given the alignment precondition.
     val rd = Vec(Bits(32 bits), IFW)
-    for (i <- 0 until IFW) { rd(i) := dataDout(hitWay)((srOffset * 8 + U(32 * i, 9 bits)).resize(9 bits), 32 bits) }
+    val rdBlk = dataDout(hitWay).subdivideIn(IFW * 32 bits)(srOffset(OFFW - 1 downto LZ_OFF))
+    for (i <- 0 until IFW) { rd(i) := rdBlk(32 * i, 32 bits) }
     io.ufp_rdata := rd.asBits
     io.ufp_resp  := srRead && !stall
   }

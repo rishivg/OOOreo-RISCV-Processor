@@ -152,16 +152,21 @@ class StoreQueue(cfg: CpuConfig = CpuConfig()) extends Component {
       val sameAddr = Vec(Bool(), DEPTH); val potConf = Vec(Bool(), DEPTH)
       val unkOld   = Vec(Bool(), DEPTH); val ovlOld  = Vec(Bool(), DEPTH); val covOld = Vec(Bool(), DEPTH)
       for (j <- 0 until DEPTH) {
-        val addrMatch = addr(j)(31 downto 2) === ldqAddr(i)(31 downto 2)
+        // Fold addrValid into the tag compare: a match is only meaningful for a
+        // valid store entry. This removes the separate `&& addrValid(j)` AND from
+        // the ovl/cov cone (the speculative-load critical path) and lets the 30-bit
+        // comparator output be masked for invalid (mostly idle) slots. Bit-identical.
+        val avj       = addrValid(j)
+        val addrMatch = avj && (addr(j)(31 downto 2) === ldqAddr(i)(31 downto 2))
         val rmaskOvl  = (ldqRmask(i) & ~mask(j)) =/= ldqRmask(i)
         val rmaskCov  = (ldqRmask(i) & ~mask(j)) === 0
-        sameAddr(j) := !addrValid(j) || (addrMatch && rmaskOvl)
+        sameAddr(j) := !avj || (addrMatch && rmaskOvl)
         potConf(j) := Mux(ttFlag === rdFlag,
           (rdActual <= U(j, IDX bits)) && (U(j, IDX bits) <= ttActual),
           (rdActual <= U(j, IDX bits)) || (U(j, IDX bits) <= ttActual))
-        unkOld(j) := potConf(j) && !addrValid(j)
-        ovlOld(j) := potConf(j) && addrValid(j) && addrMatch && rmaskOvl
-        covOld(j) := potConf(j) && addrValid(j) && addrMatch && rmaskCov
+        unkOld(j) := potConf(j) && !avj
+        ovlOld(j) := potConf(j) && addrMatch && rmaskOvl
+        covOld(j) := potConf(j) && addrMatch && rmaskCov
       }
       hasConf(i) := (sameAddr.asBits & potConf.asBits).orR
       known(i)   := (tracker =/= 0) && ovlOld.asBits.orR
