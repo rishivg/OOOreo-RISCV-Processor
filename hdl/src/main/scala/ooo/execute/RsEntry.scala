@@ -3,38 +3,47 @@ package ooo.execute
 import spinal.core._
 import ooo.CpuConfig
 
-/** Shared SpinalHDL Bundles for the RS datapaths. toBits/fromBits mirror the SV
-  * packed-struct layout (first field = MSB) where they cross a boundary.
+/** Shared SpinalHDL Bundles for the RS datapaths. Field widths derive from the
+  * CpuConfig index widths (prfIdx/arfIdx/robIdx) so PRF/ARF/ROB-depth retunes
+  * propagate instead of going stale. toBits/fromBits mirror the packed layout
+  * (first field = MSB); bit offsets are computed from the running field-width sums.
   */
-case class IntRsEntry() extends Bundle {           // int_rs_entry_t (69b)
-  val rob_id    = Bits(6 bits)
-  val rs1_phy   = Bits(6 bits); val rs1_valid = Bool()
-  val rs2_phy   = Bits(6 bits); val rs2_valid = Bool()
-  val rd_phy    = Bits(6 bits); val rd_arch   = Bits(5 bits)
+case class IntRsEntry(cfg: CpuConfig) extends Bundle {   // int_rs_entry_t
+  val rob_id    = Bits(cfg.robIdx bits)
+  val rs1_phy   = Bits(cfg.prfIdx bits); val rs1_valid = Bool()
+  val rs2_phy   = Bits(cfg.prfIdx bits); val rs2_valid = Bool()
+  val rd_phy    = Bits(cfg.prfIdx bits); val rd_arch   = Bits(cfg.arfIdx bits)
   val op1_sel   = Bits(1 bit);  val op2_sel   = Bits(1 bit)
   val imm       = Bits(32 bits)
   val fu_opcode = Bits(4 bits)
 }
 object IntRsEntry {
-  def fromBits(b: Bits): IntRsEntry = {
-    val e = IntRsEntry()
-    e.fu_opcode := b(3 downto 0);   e.imm := b(35 downto 4)
-    e.op2_sel := b(36).asBits;      e.op1_sel := b(37).asBits
-    e.rd_arch := b(42 downto 38);   e.rd_phy := b(48 downto 43)
-    e.rs2_valid := b(49);           e.rs2_phy := b(55 downto 50)
-    e.rs1_valid := b(56);           e.rs1_phy := b(62 downto 57)
-    e.rob_id := b(68 downto 63);    e
+  // LSB-first field order: fu_opcode imm op2_sel op1_sel rd_arch rd_phy rs2_valid
+  // rs2_phy rs1_valid rs1_phy rob_id (mirrors BackendTop.intEntry / int_rs_entry_t).
+  def fromBits(b: Bits, cfg: CpuConfig): IntRsEntry = {
+    val P = cfg.prfIdx; val A = cfg.arfIdx; val R = cfg.robIdx
+    val oImm = 4; val oOp2 = oImm + 32; val oOp1 = oOp2 + 1; val oRdA = oOp1 + 1
+    val oRdP = oRdA + A; val oR2v = oRdP + P; val oR2p = oR2v + 1; val oR1v = oR2p + P
+    val oR1p = oR1v + 1; val oRob = oR1p + P
+    val e = IntRsEntry(cfg)
+    e.fu_opcode := b(oImm - 1 downto 0);     e.imm := b(oOp2 - 1 downto oImm)
+    e.op2_sel := b(oOp2).asBits;             e.op1_sel := b(oOp1).asBits
+    e.rd_arch := b(oRdP - 1 downto oRdA);    e.rd_phy := b(oR2v - 1 downto oRdP)
+    e.rs2_valid := b(oR2v);                  e.rs2_phy := b(oR1v - 1 downto oR2p)
+    e.rs1_valid := b(oR1v);                  e.rs1_phy := b(oRob - 1 downto oR1p)
+    e.rob_id := b(oRob + R - 1 downto oRob); e
   }
-  def width = 69
+  def width(cfg: CpuConfig) = 4 + 32 + 1 + 1 + cfg.arfIdx + 3 * cfg.prfIdx + 2 + cfg.robIdx  // 69 @ default
 }
 
-case class CdbRs() extends Bundle { val rd_phy = Bits(6 bits); val valid = Bool() }
+case class CdbRs(cfg: CpuConfig) extends Bundle { val rd_phy = Bits(cfg.prfIdx bits); val valid = Bool() }
 
-case class BypassNet() extends Bundle {  // bypass_network_t (39b): valid rd_phy rd_value
-  val valid = Bool(); val rd_phy = Bits(6 bits); val rd_value = Bits(32 bits)
+case class BypassNet(cfg: CpuConfig) extends Bundle {  // bypass_network_t: valid rd_phy rd_value
+  val valid = Bool(); val rd_phy = Bits(cfg.prfIdx bits); val rd_value = Bits(32 bits)
 }
-object BypassNet { def fromBits(b: Bits): BypassNet = {
-  val n = BypassNet(); n.valid := b(38); n.rd_phy := b(37 downto 32); n.rd_value := b(31 downto 0); n } }
+object BypassNet { def fromBits(b: Bits, cfg: CpuConfig): BypassNet = {
+  val P = cfg.prfIdx; val n = BypassNet(cfg)
+  n.valid := b(32 + P); n.rd_phy := b(31 + P downto 32); n.rd_value := b(31 downto 0); n } }
 
 // bypass_t: en widths = cdbWidth + 1 (one bit per CDB write lane + fast-bypass).
 // sel widths = log2Up(intIssueWidth). Width = 2*(cdbWidth+1) + 2*sel.
@@ -49,15 +58,28 @@ object BypassT {
 }
 
 /** Field offsets (LSB-indexed) of rs1_phy/rs2_phy/rs1_valid/rs2_valid within a
-  * given *_rs_entry_t packed struct (rs_entry only touches these; the rest is
-  * opaque payload carried through). Computed = sum of widths of fields below.
+  * *_rs_entry_t packed struct (rs_entry only touches these; the rest is opaque
+  * payload). DERIVED from the LSB-first field-width list so PRF/ARF/ROB-depth
+  * retunes propagate; field lists mirror BackendTop.{int,intm,br,mem}Entry().
+  * Defaults reproduce 69/35/133/56 at prfIdx=6,arfIdx=5,robIdx=6.
   */
 case class RsEntryLayout(width: Int, rs1PhyLsb: Int, rs2PhyLsb: Int, rs1ValidLsb: Int, rs2ValidLsb: Int)
 object RsEntryLayout {
-  val int  = RsEntryLayout(69, 57, 50, 56, 49)    // int_rs_entry_t
-  val intm = RsEntryLayout(35, 23, 16, 22, 15)    // intm_rs_entry_t
-  val br   = RsEntryLayout(133, 121, 114, 120, 113) // br_rs_entry_t
-  val mem  = RsEntryLayout(56, 44, 37, 43, 36)    // mem_rs_entry_t (no rd fields)
+  private def build(fields: Seq[(String, Int)]): RsEntryLayout = {
+    var off = 0; val lsb = collection.mutable.Map[String, Int]()
+    for ((n, w) <- fields) { lsb(n) = off; off += w }
+    RsEntryLayout(off, lsb("rs1_phy"), lsb("rs2_phy"), lsb("rs1_valid"), lsb("rs2_valid"))
+  }
+  def int(cfg: CpuConfig)  = build(Seq("fu_opcode"->4, "imm"->32, "op2_sel"->1, "op1_sel"->1,
+    "rd_arch"->cfg.arfIdx, "rd_phy"->cfg.prfIdx, "rs2_valid"->1, "rs2_phy"->cfg.prfIdx,
+    "rs1_valid"->1, "rs1_phy"->cfg.prfIdx, "rob_id"->cfg.robIdx))
+  def intm(cfg: CpuConfig) = build(Seq("fu_opcode"->4, "rd_arch"->cfg.arfIdx, "rd_phy"->cfg.prfIdx,
+    "rs2_valid"->1, "rs2_phy"->cfg.prfIdx, "rs1_valid"->1, "rs1_phy"->cfg.prfIdx, "rob_id"->cfg.robIdx))
+  def br(cfg: CpuConfig)   = build(Seq("predict_target"->32, "predict_taken"->1, "is_compressed"->1,
+    "fu_opcode"->4, "pc"->32, "imm"->32, "rd_arch"->cfg.arfIdx, "rd_phy"->cfg.prfIdx,
+    "rs2_valid"->1, "rs2_phy"->cfg.prfIdx, "rs1_valid"->1, "rs1_phy"->cfg.prfIdx, "rob_id"->cfg.robIdx))
+  def mem(cfg: CpuConfig)  = build(Seq("fu_opcode"->4, "imm"->32, "rs2_valid"->1, "rs2_phy"->cfg.prfIdx,
+    "rs1_valid"->1, "rs1_phy"->cfg.prfIdx, "rob_id"->cfg.robIdx))
 }
 
 /** SpinalHDL port of `hdl/common/rs_entry.sv`, generic over the entry type via
@@ -80,13 +102,14 @@ class RsEntry(cfg: CpuConfig, lay: RsEntryLayout) extends Component {
     val entry_out   = out Bits(W bits)
     val entry       = out Bits(W bits)
     val clear       = in  Bool()
-    val fast_bypass = in  Vec(BypassNet(), NFB)
+    val fast_bypass = in  Vec(BypassNet(cfg), NFB)
     val rs_bypass   = out (BypassT(cfg))
-    val wakeup_cdb  = in  Vec(CdbRs(), CDBW)
+    val wakeup_cdb  = in  Vec(CdbRs(cfg), CDBW)
   }
 
-  def rs1Phy(b: Bits) = b(lay.rs1PhyLsb + 5 downto lay.rs1PhyLsb)
-  def rs2Phy(b: Bits) = b(lay.rs2PhyLsb + 5 downto lay.rs2PhyLsb)
+  val PIDX = cfg.prfIdx
+  def rs1Phy(b: Bits) = b(lay.rs1PhyLsb + PIDX - 1 downto lay.rs1PhyLsb)
+  def rs2Phy(b: Bits) = b(lay.rs2PhyLsb + PIDX - 1 downto lay.rs2PhyLsb)
 
   val entry_valid = RegInit(False)
   val entry_reg   = Reg(Bits(W bits))   // no reset (gated flop, don't-care until valid)

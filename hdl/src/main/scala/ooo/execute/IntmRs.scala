@@ -17,7 +17,7 @@ class IntmRs(cfg: CpuConfig = CpuConfig()) extends Component {
   val IDW  = cfg.idWidth       // 2
   val CDBW = cfg.cdbWidth
   val NFB  = cfg.numFastBypass
-  val EW   = RsEntryLayout.intm.width   // 35
+  val EW   = RsEntryLayout.intm(cfg).width   // 35 @ default
   val REGW = cfg.intmRsRegW             // intm_rs_reg_t (85)
   val CDBR = cfg.fuCdbRegW              // fu_cdb_reg_t (113)
   val BPW  = BypassT.width(cfg)          // bypass_t width
@@ -69,13 +69,13 @@ class IntmRs(cfg: CpuConfig = CpuConfig()) extends Component {
     config = ClockDomainConfig(resetActiveLevel = HIGH, resetKind = SYNC))
 
   new ClockingArea(coreDomain) {
-    val entries = (0 until D).map(_ => new RsEntry(cfg, RsEntryLayout.intm))
+    val entries = (0 until D).map(_ => new RsEntry(cfg, RsEntryLayout.intm(cfg)))
     val from_ds_entry = (0 until IDW).map(w => io.from_ds_entry_flat(w * EW, EW bits))
 
-    val wcdb = Vec(CdbRs(), CDBW)
-    for (k <- 0 until CDBW) { wcdb(k).rd_phy := io.cdb_rd_phy_flat(k * 6, 6 bits); wcdb(k).valid := io.cdb_valid(k) }
-    val fb = Vec(BypassNet(), NFB)
-    for (k <- 0 until NFB) { fb(k) := BypassNet.fromBits(io.alu_bypass_flat(k * 39, 39 bits)) }
+    val wcdb = Vec(CdbRs(cfg), CDBW)
+    for (k <- 0 until CDBW) { wcdb(k).rd_phy := io.cdb_rd_phy_flat(k * cfg.prfIdx, cfg.prfIdx bits); wcdb(k).valid := io.cdb_valid(k) }
+    val fb = Vec(BypassNet(cfg), NFB)
+    for (k <- 0 until NFB) { fb(k) := BypassNet.fromBits(io.alu_bypass_flat(k * cfg.bypassNetW, cfg.bypassNetW bits), cfg) }
 
     val rs_valid   = Vec(Bool(), D)
     val rs_request = Vec(Bool(), D)

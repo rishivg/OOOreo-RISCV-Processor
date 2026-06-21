@@ -21,8 +21,8 @@ class IntRs(cfg: CpuConfig = CpuConfig()) extends Component {
   val IDW  = cfg.idWidth         // 2
   val CDBW = cfg.cdbWidth        // [CDB_WIDTH] writeback/wakeup lanes (4)
   val NFB  = cfg.numFastBypass   // 2
-  val EW   = IntRsEntry.width     // 69
-  val IDX  = log2Up(D)           // 4
+  val EW   = IntRsEntry.width(cfg)  // 69 @ default
+  val IDX  = log2Up(D)           // log2Up(intrsDepth)
   val FALU = cfg.fuAluRegW       // fu_alu_reg_t (119)
   val BPW  = BypassT.width(cfg)   // bypass_t width = 2*(CDBW+1)+2*SELW
 
@@ -66,17 +66,17 @@ class IntRs(cfg: CpuConfig = CpuConfig()) extends Component {
     config = ClockDomainConfig(resetActiveLevel = HIGH, resetKind = SYNC))
 
   new ClockingArea(coreDomain) {
-    val entries = (0 until D).map(_ => new RsEntry(cfg, RsEntryLayout.int))
+    val entries = (0 until D).map(_ => new RsEntry(cfg, RsEntryLayout.int(cfg)))
 
     // dispatch entries (pre-extracted, packed Bits(EW))
     val from_ds_entry = (0 until IDW).map(w => io.from_ds_entry_flat(w * EW, EW bits))
 
     // wakeup CDB vec (shared by all slots)
-    val wcdb = Vec(CdbRs(), CDBW)
-    for (k <- 0 until CDBW) { wcdb(k).rd_phy := io.cdb_rd_phy_flat(k * 6, 6 bits); wcdb(k).valid := io.cdb_valid(k) }
+    val wcdb = Vec(CdbRs(cfg), CDBW)
+    for (k <- 0 until CDBW) { wcdb(k).rd_phy := io.cdb_rd_phy_flat(k * cfg.prfIdx, cfg.prfIdx bits); wcdb(k).valid := io.cdb_valid(k) }
     // fast bypass = the two ALU bypass nets
-    val fb = Vec(BypassNet(), NFB)
-    for (k <- 0 until NFB) { fb(k) := BypassNet.fromBits(alus(k).io.bypass) }
+    val fb = Vec(BypassNet(cfg), NFB)
+    for (k <- 0 until NFB) { fb(k) := BypassNet.fromBits(alus(k).io.bypass, cfg) }
 
     // per-slot wires (entries are opaque Bits(EW) -- generic RsEntry)
     val rs_valid     = Vec(Bool(), D)
@@ -153,7 +153,7 @@ class IntRs(cfg: CpuConfig = CpuConfig()) extends Component {
     }
 
     // issued entry + bypass (one-hot mux over slots, per issue port)
-    val issued = (0 until W).map(k => IntRsEntry.fromBits(orMux(fu_issue(k), rs_entry)))
+    val issued = (0 until W).map(k => IntRsEntry.fromBits(orMux(fu_issue(k), rs_entry), cfg))
     val rs1_value = (0 until W).map(k => io.to_prf_rs1_value_flat(k * 32, 32 bits))
     val rs2_value = (0 until W).map(k => io.to_prf_rs2_value_flat(k * 32, 32 bits))
 

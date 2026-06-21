@@ -22,7 +22,7 @@ class BranchTop(cfg: CpuConfig = CpuConfig()) extends Component {
   val AIDX = cfg.arfIdx          // 5
   val GHR  = cfg.ghrLen          // [GHR_LEN]
   val PROV = cfg.tageNum * (1 + cfg.tageCtrBits + cfg.tageUBits) + 2   // +2 = forwarded bimodal counter
-  val EW   = RsEntryLayout.br.width   // 133
+  val EW   = RsEntryLayout.br(cfg).width   // 133 @ default
   val BNW  = 1 + PIDX + 32       // bypass_network_t = 39
   val FBRW = 183                 // fu_br_reg_t
   val BPW  = BypassT.width(cfg)   // bypass_t width
