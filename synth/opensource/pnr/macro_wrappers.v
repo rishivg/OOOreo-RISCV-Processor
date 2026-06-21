@@ -107,3 +107,18 @@ module bim_bank_array(clk, re, raddr, rdata, we, waddr, wdata, wmask);
     .addr_in(we ? waddr : raddr),
     .wd_in({16'b0, wdata}), .w_mask_in({16'b0, wmask}), .rd_out(rd));
 endmodule
+
+// Block-read uBTB bank: 16 rows x 256b (8 lanes x 32b {valid,tag,offset}) -> reuse the
+// existing fakeram45_16x256 (full 256 width). 4 instances (br/jm x even/odd). addr is
+// 4-bit (16 rows), zero-extended to the macro's 7-bit pin. 1R1W modeled single-port w/
+// addr-mux, like the TAGE bank (read-during-commit conflict is rare, accepted).
+module ubtb_bank_array(clk, re, raddr, rdata, we, waddr, wdata, wmask);
+  input clk, re, we;
+  input  [3:0]   raddr, waddr;
+  input  [255:0] wdata, wmask;
+  output [255:0] rdata;
+  fakeram45_16x256 u_ram (
+    .clk(clk), .ce_in(1'b0), .we_in(~we),
+    .addr_in({3'b0, (we ? waddr : raddr)}),
+    .wd_in(wdata), .w_mask_in(wmask), .rd_out(rdata));
+endmodule

@@ -86,7 +86,7 @@ set dbu [$block getDbUnitsPerMicron]
 proc um {block v} { return [expr {round($v * [$block getDbUnitsPerMicron])}] }
 
 # classify BLOCK macros by hierarchy, name-sorted so ways pack data-then-tag
-set ic {} ; set dc {} ; set ot {}
+set ic {} ; set dc {} ; set pr {} ; set ot {}
 set pairs {}
 foreach inst [$block getInsts] {
   if { [[$inst getMaster] getType] == "BLOCK" } { lappend pairs [list [$inst getName] $inst] }
@@ -95,9 +95,10 @@ foreach p [lsort -index 0 $pairs] {
   set inst [lindex $p 1]; set nm [lindex $p 0]
   if { [string match *icache* $nm] }      { lappend ic $inst
   } elseif { [string match *dcache* $nm] } { lappend dc $inst
+  } elseif { [string match *tage* $nm] || [string match *ubtb* $nm] || [string match *bim* $nm] } { lappend pr $inst
   } else                                   { lappend ot $inst }
 }
-puts "INFO: macros -> icache [llength $ic], dcache [llength $dc], other [llength $ot]"
+puts "INFO: macros -> icache [llength $ic], dcache [llength $dc], pred [llength $pr], other [llength $ot]"
 
 # shelf-pack one group into a region whose lower-left is (x0,y0), width strip_w
 proc pack_group {block dbu macros x0 y0 strip_w gap} {
@@ -117,9 +118,16 @@ proc pack_group {block dbu macros x0 y0 strip_w gap} {
 set gap [um $block 8.0]
 set sw  [um $block 400.0]    ;# ~2 data macros wide -> each cache packs 2 ways/shelf
 pack_group $block $dbu $ic [um $block 30.0]  [um $block 30.0]  $sw $gap   ;# I-cache: lower-left
+# PREDICTORS (8 TAGE + 2 bim + 4 uBTB) packed tight DIRECTLY ABOVE the I-cache. The
+# fetch-loop critical path is I$ tag SRAM -> hit/fetchAlign -> TAGE bank addr; when these
+# 14 macros were lumped in 'other' (with the divider) the 1-driver->8-TAGE-bank address
+# net ran across the floorplan (~2.55ns of the 4.66ns path was this wire). Dedicating +
+# clustering them adjacent to the I-cache keeps that net short -- same rationale as the
+# per-cache clustering above (which broke the original 11ns I-cache wire chain).
+pack_group $block $dbu $pr [um $block 30.0]  [um $block 500.0] $sw $gap   ;# predictors: above I-cache
 pack_group $block $dbu $dc [um $block 470.0] [um $block 30.0]  $sw $gap   ;# D-cache: to its right
-pack_group $block $dbu $ot [um $block 30.0]  [um $block 560.0] $sw $gap   ;# divider etc.
-puts "INFO: macros placed (clustered per cache)"
+pack_group $block $dbu $ot [um $block 470.0] [um $block 560.0] $sw $gap   ;# divider etc.: out of the way
+puts "INFO: macros placed (I-cache + predictors clustered, D-cache, divider)"
 
 # NOTE: an LSU std-cell fence (dbRegion+dbGroup over memRs/ldq/stq/arb/dc to shorten
 # the AGU-0-stage load-loop nets) was tried and REJECTED: a loose region is silently
