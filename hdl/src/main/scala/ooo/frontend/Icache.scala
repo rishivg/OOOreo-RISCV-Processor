@@ -150,7 +150,16 @@ class Icache(cfg: CpuConfig = CpuConfig()) extends Component {
     // srOffset(OFFW-1 downto LZ) collapses four 256:1 byte-muxes (+ a *8 multiply) to a
     // (line/block)-way block mux. Bit-identical given the alignment precondition.
     val rd = Vec(Bits(32 bits), IFW)
-    val rdBlk = dataDout(hitWay).subdivideIn(IFW * 32 bits)(srOffset(OFFW - 1 downto LZ_OFF))
+    // Block-select each way FIRST (by the early, registered srOffset), THEN 4:1 way-mux
+    // (by the LATE hitWay off the tag compare). Bit-identical to muxing the way then the
+    // block, but the critical late hitWay now drives a 128b (IFW*32) mux instead of the
+    // full 256b line -> halves the one-hot way-select fanout that repair_design buffers on
+    // the icache -> fetchAlign critical path. The per-way block-selects ride the early
+    // srOffset, off the hit path.
+    val blkSel = srOffset(OFFW - 1 downto LZ_OFF)
+    val wayBlk = Vec(Bits(IFW * 32 bits), WAYS)
+    for (w <- 0 until WAYS) { wayBlk(w) := dataDout(w).subdivideIn(IFW * 32 bits)(blkSel) }
+    val rdBlk = wayBlk(hitWay)
     for (i <- 0 until IFW) { rd(i) := rdBlk(32 * i, 32 bits) }
     io.ufp_rdata := rd.asBits
     io.ufp_resp  := srRead && !stall

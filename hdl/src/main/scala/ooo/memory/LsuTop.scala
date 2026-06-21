@@ -2,7 +2,7 @@ package ooo.memory
 
 import spinal.core._
 import ooo.CpuConfig
-import ooo.execute.MemRs
+import ooo.execute.{MemRs, BypassT}
 
 /** SpinalHDL port of `hdl/memory/lsu_top.sv` -- the load/store unit cluster.
   *
@@ -18,7 +18,7 @@ import ooo.execute.MemRs
   */
 class LsuTop(cfg: CpuConfig = CpuConfig()) extends Component {
   setDefinitionName("lsu_top_spinal")
-  val CDBW = cfg.cdbWidth      // 5
+  val CDBW = cfg.cdbWidth      // [CDB_WIDTH]
   val NFB  = cfg.numFastBypass // 2
   val PIDX = cfg.prfIdx        // 6
   val RIDX = cfg.robIdx        // 6
@@ -27,6 +27,7 @@ class LsuTop(cfg: CpuConfig = CpuConfig()) extends Component {
   val STQ  = cfg.stqDepth      // 8
   val MEMEW = 56               // mem_rs_entry_t
   val BNW  = 1 + PIDX + 32     // bypass_network_t = 39
+  val BPW  = BypassT.width(cfg) // bypass_t width
 
   val io = new Bundle {
     val clk = in Bool(); val rst = in Bool(); val backend_flush = in Bool()
@@ -46,7 +47,7 @@ class LsuTop(cfg: CpuConfig = CpuConfig()) extends Component {
     // to_prf (mem_rs single read port)
     val to_prf_rs1_phy   = out Bits (PIDX bits)
     val to_prf_rs2_phy   = out Bits (PIDX bits)
-    val to_prf_rs_bypass = out Bits (14 bits)
+    val to_prf_rs_bypass = out Bits (BPW bits)
     val to_prf_rs1_value = in  Bits (32 bits)
     val to_prf_rs2_value = in  Bits (32 bits)
     // cdb_itf.rs[CDB_WIDTH] (mem_rs wakeup)

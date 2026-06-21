@@ -19,11 +19,12 @@ class IntRs(cfg: CpuConfig = CpuConfig()) extends Component {
   val D    = cfg.intrsDepth      // 16
   val W    = cfg.intIssueWidth   // 2
   val IDW  = cfg.idWidth         // 2
-  val CDBW = cfg.cdbWidth        // 5
+  val CDBW = cfg.cdbWidth        // [CDB_WIDTH] writeback/wakeup lanes (4)
   val NFB  = cfg.numFastBypass   // 2
   val EW   = IntRsEntry.width     // 69
   val IDX  = log2Up(D)           // 4
-  val FALU = 119                 // fu_alu_reg_t
+  val FALU = cfg.fuAluRegW       // fu_alu_reg_t (119)
+  val BPW  = BypassT.width(cfg)   // bypass_t width = 2*(CDBW+1)+2*SELW
 
   val io = new Bundle {
     val clk = in Bool(); val rst = in Bool()
@@ -34,7 +35,7 @@ class IntRs(cfg: CpuConfig = CpuConfig()) extends Component {
     // rs_prf_itf.rs[W]
     val to_prf_rs1_phy_flat   = out Bits (W * 6 bits)
     val to_prf_rs2_phy_flat   = out Bits (W * 6 bits)
-    val to_prf_rs_bypass_flat = out Bits (W * 14 bits)
+    val to_prf_rs_bypass_flat = out Bits (W * BPW bits)
     val to_prf_rs1_value_flat = in  Bits (W * 32 bits)
     val to_prf_rs2_value_flat = in  Bits (W * 32 bits)
     // cdb_itf.rs[CDBW] (wakeup)
@@ -82,7 +83,7 @@ class IntRs(cfg: CpuConfig = CpuConfig()) extends Component {
     val rs_request   = Vec(Bool(), D)
     val rs_entry_out = Vec(Bits(EW bits), D)
     val rs_entry     = Vec(Bits(EW bits), D)
-    val rs_bypass    = Vec(BypassT(), D)
+    val rs_bypass    = Vec(BypassT(cfg), D)
     val push_en  = Vec(Bool(), D)
     val clear    = Vec(Bool(), D)
     val entry_in = Vec(Bits(EW bits), D)
@@ -159,7 +160,7 @@ class IntRs(cfg: CpuConfig = CpuConfig()) extends Component {
     for (k <- 0 until W) {
       io.to_prf_rs1_phy_flat(k * 6, 6 bits) := issued(k).rs1_phy
       io.to_prf_rs2_phy_flat(k * 6, 6 bits) := issued(k).rs2_phy
-      io.to_prf_rs_bypass_flat(k * 14, 14 bits) := orMux(fu_issue(k), rs_bypass.map(_.toBits))
+      io.to_prf_rs_bypass_flat(k * BPW, BPW bits) := orMux(fu_issue(k), rs_bypass.map(_.toBits))
 
       // fu_alu_reg_t (SV layout): rob_id rd_arch rd_phy fu_opcode op1_sel op2_sel imm rs1 rs2
       val falu = issued(k).rob_id ## issued(k).rd_arch ## issued(k).rd_phy ## issued(k).fu_opcode ##

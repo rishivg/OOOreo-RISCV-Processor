@@ -21,7 +21,7 @@ import ooo.frontend.bpred.{Tage, Ubtb, Ras}
 class FrontendTop(cfg: CpuConfig = CpuConfig()) extends Component {
   setDefinitionName("frontend_top_spinal")
   val IFW  = cfg.ifWidth          // 4
-  val GHR  = cfg.ghrLen           // 64
+  val GHR  = cfg.ghrLen           // [GHR_LEN]
   val PROV = cfg.tageNum * (1 + cfg.tageCtrBits + cfg.tageUBits) + 2   // +2 = forwarded bimodal counter
   val IFIDX = log2Up(IFW)         // 2
   val PMAX = 2 * IFW              // 8 parcels
@@ -199,6 +199,12 @@ class FrontendTop(cfg: CpuConfig = CpuConfig()) extends Component {
     tage.io.from_cb_prov := io.from_cb_prov
     io.to_fifo_prov_flat := tage.io.prov_snapshot_flat
     tage.io.inst_pc := faInstPc; tage.io.flush := io.backend_flush
+    // sync-read SRAM: address presented one cycle early off the NEXT-cycle fetch PC,
+    // captured on the fetch advance (if1 prv_ready). Next-cycle faPc is carryPc on a span
+    // carry (C-ext 32b straddling the block) else pcNext -- so the early read keys off the
+    // same block the prediction will (mirrors the original instPc(0)=faPc read).
+    tage.io.re := if1.io.prv_ready
+    tage.io.blk_pc_next := Mux(spanCarry && !io.backend_flush, faSpanPc, pcNext)
     tage.io.spec_update_en := fetchFire; tage.io.spec_br_valid := specBrValid.asBits
     tage.io.spec_br_taken := effPredictTaken
     ghrSnapshot := tage.io.ghr_snapshot; predictTakenGshare := tage.io.predict_taken
@@ -210,6 +216,10 @@ class FrontendTop(cfg: CpuConfig = CpuConfig()) extends Component {
     ubtb.io.from_cb_fu_opcode := io.from_cb_fu_opcode; ubtb.io.from_cb_branch_taken := io.from_cb_branch_taken
     ubtb.io.from_cb_target_address := io.from_cb_target_address
     ubtb.io.predict_taken_gshare := predictTakenGshare; ubtb.io.inst_pc := faInstPc; ubtb.io.seq_next := fa.io.seq_next
+    // sync-read SRAM: same early-address scheme as TAGE (address off the next-cycle fetch
+    // block PC, captured on the fetch advance) so the registered target lands at T+1.
+    ubtb.io.re := if1.io.prv_ready
+    ubtb.io.blk_pc_next := Mux(spanCarry && !io.backend_flush, faSpanPc, pcNext)
     predictTargetUbtb := ubtb.io.predict_target; predictTakenUbtb := ubtb.io.predict_taken
 
     // RAS

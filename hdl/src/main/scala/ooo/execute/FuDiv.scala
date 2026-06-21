@@ -35,8 +35,8 @@ class FuDiv(cfg: CpuConfig = CpuConfig()) extends Component {
     val clk = in Bool(); val rst = in Bool()
     val prv_valid = in Bool(); val prv_ready = out Bool()
     val nxt_valid = out Bool(); val nxt_ready = in Bool()
-    val iss_in = in Bits(RIDX + AIDX + PIDX + 4 + 32 + 32 bits)   // intm_rs_reg_t = 85
-    val cdb_out = out Bits(RIDX + AIDX + PIDX + 32 + 32 + 32 bits) // fu_cdb_reg_t = 113
+    val iss_in = in Bits(cfg.intmRsRegW bits)    // intm_rs_reg_t (85)
+    val cdb_out = out Bits(cfg.fuCdbRegW bits)   // fu_cdb_reg_t (113)
   }
   noIoPrefix()
 

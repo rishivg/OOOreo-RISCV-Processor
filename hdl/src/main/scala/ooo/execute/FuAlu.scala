@@ -21,8 +21,8 @@ import ooo.backend.decode.DecodeConsts._
 class FuAlu(cfg: CpuConfig = CpuConfig()) extends Component {
   setDefinitionName("fu_alu_spinal")
 
-  val regW    = 6 + 5 + 6 + 4 + 1 + 1 + 32 + 32 + 32  // fu_alu_reg_t = 119
-  val bypassW = 1 + 6 + 32                            // bypass_network_t = 39
+  val regW    = cfg.fuAluRegW   // fu_alu_reg_t (119)
+  val bypassW = cfg.bypassNetW  // bypass_network_t (39)
 
   val io = new Bundle {
     val clk          = in  Bool()

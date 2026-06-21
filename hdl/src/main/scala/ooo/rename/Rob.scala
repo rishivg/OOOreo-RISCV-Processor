@@ -20,7 +20,7 @@ import ooo.CpuConfig
 class Rob(cfg: CpuConfig = CpuConfig()) extends Component {
   setDefinitionName("rob_spinal")
   val IDW   = cfg.idWidth        // 2
-  val CDBW  = cfg.cdbWidth       // 5
+  val CDBW  = cfg.cdbWidth       // [CDB_WIDTH]
   val DEPTH = cfg.robDepth       // 32
   val PIDX  = cfg.robPtrIdx      // 5
   val RIDX  = cfg.robIdx         // 6

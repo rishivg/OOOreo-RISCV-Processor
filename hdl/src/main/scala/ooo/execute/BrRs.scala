@@ -13,11 +13,12 @@ import ooo.CpuConfig
   */
 class BrRs(cfg: CpuConfig = CpuConfig()) extends Component {
   setDefinitionName("br_rs_spinal")
-  val D    = cfg.brrsDepth     // 4
+  val D    = cfg.brrsDepth     // [BRRS_DEPTH] (3)
   val CDBW = cfg.cdbWidth
   val NFB  = cfg.numFastBypass
   val EW   = RsEntryLayout.br.width   // 133
-  val FBRW = 183                      // fu_br_reg_t
+  val FBRW = cfg.fuBrRegW             // fu_br_reg_t (183)
+  val BPW  = BypassT.width(cfg)        // bypass_t width
 
   val io = new Bundle {
     val clk = in Bool(); val rst = in Bool()
@@ -27,7 +28,7 @@ class BrRs(cfg: CpuConfig = CpuConfig()) extends Component {
     val branch_ready       = in Bool()
     val to_prf_rs1_phy   = out Bits (6 bits)
     val to_prf_rs2_phy   = out Bits (6 bits)
-    val to_prf_rs_bypass = out Bits (14 bits)
+    val to_prf_rs_bypass = out Bits (BPW bits)
     val to_prf_rs1_value = in  Bits (32 bits)
     val to_prf_rs2_value = in  Bits (32 bits)
     val cdb_rd_phy_flat = in Bits (CDBW * 6 bits)
@@ -66,7 +67,7 @@ class BrRs(cfg: CpuConfig = CpuConfig()) extends Component {
     val rs_valid   = Vec(Bool(), D)
     val rs_request = Vec(Bool(), D)
     val rs_entry   = Vec(Bits(EW bits), D)
-    val rs_bypass  = Vec(BypassT(), D)
+    val rs_bypass  = Vec(BypassT(cfg), D)
     val push_en    = Vec(Bool(), D)
 
     // shared exclusive prefix-OR: out(i)=OR(in(0..i-1)) (O(D) vs O(D^2) per-slot folds)

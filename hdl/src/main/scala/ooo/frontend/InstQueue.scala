@@ -18,7 +18,7 @@ class InstQueue(cfg: CpuConfig = CpuConfig(), val depth: Int = 8) extends Compon
   setDefinitionName("inst_queue_spinal")
   val IFW  = cfg.ifWidth       // 4
   val OW   = cfg.idWidth       // 2
-  val GHR  = cfg.ghrLen        // 64
+  val GHR  = cfg.ghrLen        // [GHR_LEN]
   val PROV = cfg.tageNum * (1 + cfg.tageCtrBits + cfg.tageUBits) + 2   // +2 = forwarded bimodal counter
   val DEPTH = depth            // 8
   val AIDX = log2Up(DEPTH)     // 3
@@ -157,14 +157,17 @@ class InstQueue(cfg: CpuConfig = CpuConfig(), val depth: Int = 8) extends Compon
     val deqFire = io.out_valid && io.out_ready
     val lastSrc = sSrc((bundleCount - 1).resize(log2Up(OW) bits))
 
-    val headMore = Bool(); val headNxSlot = UInt(AIDX bits)
+    // These hold slot/candidate indices in the 2*IFW candidate space, so they must be
+    // sized log2Up(2*IFW) -- NOT AIDX (= log2Up(depth)), which only coincides at depth=8.
+    val SLOTW = log2Up(2 * IFW)
+    val headMore = Bool(); val headNxSlot = UInt(SLOTW bits)
     headMore := False; headNxSlot := 0
-    when((lastSrc + 1) < IFW) { headNxSlot := (lastSrc + 1).resize(AIDX bits); headMore := head.valid(headNxSlot.resize(log2Up(IFW) bits)) }
+    when((lastSrc + 1) < IFW) { headNxSlot := (lastSrc + 1).resize(SLOTW bits); headMore := head.valid(headNxSlot.resize(log2Up(IFW) bits)) }
 
-    val h1Cur = (lastSrc - IFW).resize(AIDX bits)
-    val h1More = Bool(); val h1NxSlot = UInt(AIDX bits)
+    val h1Cur = (lastSrc - IFW).resize(SLOTW bits)
+    val h1More = Bool(); val h1NxSlot = UInt(SLOTW bits)
     h1More := False; h1NxSlot := 0
-    when((h1Cur + 1) < IFW) { h1NxSlot := (h1Cur + 1).resize(AIDX bits); h1More := head1.valid(h1NxSlot.resize(log2Up(IFW) bits)) }
+    when((h1Cur + 1) < IFW) { h1NxSlot := (h1Cur + 1).resize(SLOTW bits); h1More := head1.valid(h1NxSlot.resize(log2Up(IFW) bits)) }
 
     val nxtRdPtr  = cloneOf(rdPtr); val nxtRdSlot = cloneOf(rdSlot)
     nxtRdPtr := rdPtr; nxtRdSlot := rdSlot
@@ -172,10 +175,10 @@ class InstQueue(cfg: CpuConfig = CpuConfig(), val depth: Int = 8) extends Compon
       nxtRdPtr := (rdPtr + 1).resize(AIDX + 1 bits); nxtRdSlot := 0
     }.elsewhen(deqFire) {
       when(cInh(lastSrc)) {
-        when(headMore) { nxtRdPtr := rdPtr; nxtRdSlot := headNxSlot }
+        when(headMore) { nxtRdPtr := rdPtr; nxtRdSlot := headNxSlot.resize(rdSlot.getWidth bits) }
           .otherwise   { nxtRdPtr := (rdPtr + 1).resize(AIDX + 1 bits); nxtRdSlot := 0 }
       }.otherwise {
-        when(h1More) { nxtRdPtr := (rdPtr + 1).resize(AIDX + 1 bits); nxtRdSlot := h1NxSlot }
+        when(h1More) { nxtRdPtr := (rdPtr + 1).resize(AIDX + 1 bits); nxtRdSlot := h1NxSlot.resize(rdSlot.getWidth bits) }
           .otherwise { nxtRdPtr := (rdPtr + 2).resize(AIDX + 1 bits); nxtRdSlot := 0 }
       }
     }

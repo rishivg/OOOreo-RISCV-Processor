@@ -45,9 +45,9 @@ class BimBank(addrW: Int, dw: Int) extends BlackBox {
 class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
   setDefinitionName("tage_spinal")
   val IFW     = cfg.ifWidth        // 4
-  val GHR     = cfg.ghrLen         // 64
+  val GHR     = cfg.ghrLen         // [GHR_LEN]
   val NUM     = cfg.tageNum        // 4
-  val TDEPTH  = cfg.tageDepth      // 256
+  val TDEPTH  = cfg.tageDepth      // [TAGE_DEPTH]
   val TIDX    = cfg.tageIdx        // 8
   val TAGB    = cfg.tageTagBits    // 9
   val CTRB    = cfg.tageCtrBits    // 3
@@ -69,6 +69,8 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     // tagged tables AND the bimodal -> commit is write-only for both.
     val from_cb_prov         = in Bits (NUM * (1 + CTRB + UB) + 2 bits)
     val inst_pc        = in Bits (IFW * 32 bits)
+    val re             = in Bool()           // fetch-advance enable (= if1 prv_ready); gates the sync SRAM read capture
+    val blk_pc_next    = in Bits (32 bits)   // next-fetch block PC (= pcNext); the early read address
     val flush          = in Bool()
     val spec_update_en = in Bool()
     val spec_br_valid  = in Bits (IFW bits)
@@ -184,7 +186,7 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     // bimodal base PHT -> block-read SRAM banks (even/odd by bRow[0]); 2 reads (straddle)
     // + write-only commit (forwarded counter). Sim model inits to 01/lane (warm-up parity).
     val bimBank = Array.fill(2)(new BimBank(BADDR, BDW))
-    for (b <- 0 until 2) { bimBank(b).io.clk := io.clk; bimBank(b).io.re := True }
+    for (b <- 0 until 2) { bimBank(b).io.clk := io.clk; bimBank(b).io.re := io.re }
     // tagged tables self-correct (a stale tag just mispredicts, then is overwritten)
     // -> no reset: drops ~NUM*TDEPTH*entryW reset flops off the predictor.
     // block-read tables -> per-table even/odd SRAM banks (1R1W): bank=blkIdx[0],
@@ -192,7 +194,7 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     // since consecutive blocks differ in blkIdx LSB); commit writes one bank (masked,
     // single lane). Phase 3c: replaces the Phase-1 flop tables -> SRAM area/FF/LUT win.
     val bank = Array.tabulate(NUM)(_ => Array.fill(2)(new TageBank(ADDRW, DW)))
-    for (t <- 0 until NUM; b <- 0 until 2) { bank(t)(b).io.clk := io.clk; bank(t)(b).io.re := True }
+    for (t <- 0 until NUM; b <- 0 until 2) { bank(t)(b).io.clk := io.clk; bank(t)(b).io.re := io.re }
 
     io.ghr_snapshot := ghrSpec
 
@@ -226,25 +228,46 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
     // mid-block starts after taken branches), so read the fetch block's row (A) AND the
     // next block's row (B); each slot picks the row of ITS block, then its in-block
     // halfword lane. 2 row-reads/table (vs the per-slot 4) -- straddle-correct.
-    val blkBpc = (instPc(0).asUInt + U(1 << LZ, 32 bits)).asBits   // next 16B block
+    // SYNC-READ retiming: the SRAM banks register their output, so present the read
+    // ADDRESS one cycle early off blk_pc_next (= pcNext, the block that becomes pcReg next
+    // cycle) XOR the EARLY fold -- the registered row then lands at T+1 aligned with pcReg,
+    // exactly like the I-cache's blkPcNext read. EARLY fold = the value that becomes
+    // fidxSpec next cycle: fidxFetch on a normal advance, the resync fold on flush.
+    val earlyFidx = Array.tabulate(NUM)(t =>
+      Mux(io.flush, foldGen(ghrCommitNext, HIST(t), TIDX), fidxFetch(t)))
+    val blkBpcE = (io.blk_pc_next.asUInt + U(1 << LZ, 32 bits)).asBits   // next 16B block (early)
     // bank reads: A and B always map to opposite banks (blkIdx LSB differs); bank0 reads
     // whichever of A/B has bank-bit 0, bank1 the other; route rdata back to rowA/rowB.
-    val bankA = Array.tabulate(NUM)(t => blkIdx(instPc(0), fidxSpec(t))(0))
+    val bankA = Array.tabulate(NUM)(t => blkIdx(io.blk_pc_next, earlyFidx(t))(0))
     for (t <- 0 until NUM) {
-      val idxA = blkIdx(instPc(0), fidxSpec(t)); val idxB = blkIdx(blkBpc, fidxSpec(t))
+      val idxA = blkIdx(io.blk_pc_next, earlyFidx(t)); val idxB = blkIdx(blkBpcE, earlyFidx(t))
       val addrA = idxA(TIDX - 1 downto 1); val addrB = idxB(TIDX - 1 downto 1)
       bank(t)(0).io.raddr := Mux(bankA(t) === False, addrA, addrB)
       bank(t)(1).io.raddr := Mux(bankA(t) === False, addrB, addrA)
     }
-    val rowA = Array.tabulate(NUM)(t => Mux(bankA(t) === False, bank(t)(0).io.rdata, bank(t)(1).io.rdata))
-    val rowB = Array.tabulate(NUM)(t => Mux(bankA(t) === False, bank(t)(1).io.rdata, bank(t)(0).io.rdata))
-    // bimodal block-read (same 2-bank straddle as the tagged tables, no fold)
-    val bBankA = bRowOf(instPc(0))(0)
-    val bAddrA = bRowOf(instPc(0))(BROWI - 1 downto 1); val bAddrB = bRowOf(blkBpc)(BROWI - 1 downto 1)
+    // routing bit registered (re-gated, holds on stall) so the T+1 registered rdata un-routes correctly
+    val bankAReg = Array.tabulate(NUM)(t => RegNextWhen(bankA(t), io.re))
+    val rowA = Array.tabulate(NUM)(t => Mux(bankAReg(t) === False, bank(t)(0).io.rdata, bank(t)(1).io.rdata))
+    val rowB = Array.tabulate(NUM)(t => Mux(bankAReg(t) === False, bank(t)(1).io.rdata, bank(t)(0).io.rdata))
+    // bimodal block-read (same 2-bank straddle, NO history fold -> address purely off blk_pc_next)
+    val bBankA = bRowOf(io.blk_pc_next)(0)
+    val bAddrA = bRowOf(io.blk_pc_next)(BROWI - 1 downto 1); val bAddrB = bRowOf(blkBpcE)(BROWI - 1 downto 1)
     bimBank(0).io.raddr := Mux(bBankA === False, bAddrA, bAddrB)
     bimBank(1).io.raddr := Mux(bBankA === False, bAddrB, bAddrA)
-    val bRowA = Mux(bBankA === False, bimBank(0).io.rdata, bimBank(1).io.rdata)
-    val bRowB = Mux(bBankA === False, bimBank(1).io.rdata, bimBank(0).io.rdata)
+    val bBankAReg = RegNextWhen(bBankA, io.re)
+    val bRowA = Mux(bBankAReg === False, bimBank(0).io.rdata, bimBank(1).io.rdata)
+    val bRowB = Mux(bBankAReg === False, bimBank(1).io.rdata, bimBank(0).io.rdata)
+    // #7: precompute the table-INDEPENDENT PC-part of tagComb per in-block lane, off
+    // blk_pc_next at T+0, registered (re-gated like the bank routing). instPc(i) ==
+    // blockBase ## (lane<<1), so pcPart(blockBase, laneOf(instPc(i))) == the pc-part of
+    // tagComb(instPc(i)); the T+1 tag-compare becomes row.tag === (pcPartReg(lane) ^ ftag)
+    // -- one XOR layer instead of the full pc-fold on the realigned instPc. Bit-identical.
+    def pcPartComb(bp: Bits, l: Int): Bits = {
+      val lb = U(l, log2Up(LANES) bits)
+      ((bp(TAGB + 1 downto 4) ## lb(log2Up(LANES) - 1)) ## (lb(1) ^ lb(0))) ^ bp(2 * TAGB + 1 downto TAGB + 2)
+    }
+    val pcPartA = Vec.tabulate(LANES)(l => RegNextWhen(pcPartComb(io.blk_pc_next, l), io.re))
+    val pcPartB = Vec.tabulate(LANES)(l => RegNextWhen(pcPartComb(blkBpcE, l), io.re))
     val ptaken = Vec(Bool(), IFW)
     val snap   = Vec(Bits(PBT bits), IFW)   // per-slot: bimodal 2b ## {hit,ctr,u}xNUM
     for (i <- 0 until IFW) {
@@ -252,11 +275,12 @@ class Tage(cfg: CpuConfig = CpuConfig()) extends Component {
       val inB = pc(31 downto LZ) =/= instPc(0)(31 downto LZ)       // slot in the next block?
       val bimCtrSlot = bCtr(Mux(inB, bRowB, bRowA), laneOf(pc))   // 2b base counter
       val basePred = bimCtrSlot >= U(2)
+      val pcPartSel = Mux(inB, pcPartB(laneOf(pc)), pcPartA(laneOf(pc)))  // #7: precomputed pc-part
       val pEnt = Vec(TageEntry(), NUM)
       val pHit = Vec(Bool(), NUM)
       for (t <- 0 until NUM) {
         pEnt(t) := laneEntry(Mux(inB, rowB(t), rowA(t)), laneOf(pc))
-        pHit(t) := pEnt(t).tag === tagComb(pc, ftagSpec(t))
+        pHit(t) := pEnt(t).tag === (pcPartSel ^ ftagSpec(t))
       }
       // snapshot the predict-time provider entries (bimodal 2b ## per-table {hit,ctr,u});
       // decoded back at commit (from_cb_prov) so the commit re-reads neither tt nor bimodal.

@@ -15,23 +15,24 @@ import ooo.CpuConfig
   */
 class Prf(cfg: CpuConfig = CpuConfig()) extends Component {
   setDefinitionName("prf_spinal")
-  val CDBW = cfg.cdbWidth        // 5
+  val CDBW = cfg.cdbWidth        // 4 (writeback / wakeup lanes)
+  val RDP  = cfg.prfReadPorts    // 5 (read fabric ports)
   val NFB  = cfg.numFastBypass   // 2
   val PIDX = cfg.prfIdx          // 6
-  val DEPTH = cfg.prfDepth       // 64
-  val BPW  = 2 * (CDBW + 1) + 2 * log2Up(cfg.intIssueWidth)   // bypass_t = 14
+  val DEPTH = cfg.prfDepth       // 48
+  val BPW  = 2 * (CDBW + 1) + 2 * log2Up(cfg.intIssueWidth)   // bypass_t = 12
   val BNW  = 1 + PIDX + 32        // bypass_network_t = 39
   val SELW = log2Up(cfg.intIssueWidth)   // 1
 
   val io = new Bundle {
     val clk = in Bool()
-    // rs_prf_itf.prf from_rs[CDB_WIDTH]
-    val from_rs_rs1_phy_flat   = in  Bits (CDBW * PIDX bits)
-    val from_rs_rs2_phy_flat   = in  Bits (CDBW * PIDX bits)
-    val from_rs_rs_bypass_flat = in  Bits (CDBW * BPW bits)
-    val from_rs_rs1_value_flat = out Bits (CDBW * 32 bits)
-    val from_rs_rs2_value_flat = out Bits (CDBW * 32 bits)
-    // cdb_itf.prf cdb[CDB_WIDTH]
+    // rs_prf_itf.prf from_rs[PRF_READ_PORTS]
+    val from_rs_rs1_phy_flat   = in  Bits (RDP * PIDX bits)
+    val from_rs_rs2_phy_flat   = in  Bits (RDP * PIDX bits)
+    val from_rs_rs_bypass_flat = in  Bits (RDP * BPW bits)
+    val from_rs_rs1_value_flat = out Bits (RDP * 32 bits)
+    val from_rs_rs2_value_flat = out Bits (RDP * 32 bits)
+    // cdb_itf.prf cdb[CDB_WIDTH] (writeback)
     val cdb_valid_flat    = in Bits (CDBW bits)
     val cdb_rd_phy_flat   = in Bits (CDBW * PIDX bits)
     val cdb_rd_value_flat = in Bits (CDBW * 32 bits)
@@ -65,25 +66,25 @@ class Prf(cfg: CpuConfig = CpuConfig()) extends Component {
   def rs1Sel(i: Int) = rsBypass(i)(2 * SELW - 1 downto SELW).asUInt
   def rs2Sel(i: Int) = rsBypass(i)(SELW - 1 downto 0).asUInt
 
-  // one-hot bypass resolution (mirrors the SV unique case)
+  // one-hot bypass resolution (mirrors the SV unique case), generalised over
+  // cdbWidth lanes: en[k] (k<CDBW) -> CDB lane k, en[CDBW] -> fast bypass,
+  // en==0 -> PRF read (or 0 for phy0).
   def readVal(en: Bits, sel: UInt, phy: UInt): Bits = {
     val v = Bits(32 bits)
     switch(en) {
-      is(B"6'b000000") { v := Mux(phy === 0, B(0, 32 bits), prfData(phy)) }
-      is(B"6'b000001") { v := cdbRdValue(0) }
-      is(B"6'b000010") { v := cdbRdValue(1) }
-      is(B"6'b000100") { v := cdbRdValue(2) }
-      is(B"6'b001000") { v := cdbRdValue(3) }
-      is(B"6'b010000") { v := cdbRdValue(4) }
-      is(B"6'b100000") { v := aluBypassRdValue(sel) }
+      is(B(0, CDBW + 1 bits)) { v := Mux(phy === 0, B(0, 32 bits), prfData(phy)) }
+      for (k <- 0 until CDBW) {
+        is(B(BigInt(1) << k, CDBW + 1 bits)) { v := cdbRdValue(k) }
+      }
+      is(B(BigInt(1) << CDBW, CDBW + 1 bits)) { v := aluBypassRdValue(sel) }
       default          { v := B(0, 32 bits) }
     }
     v
   }
 
-  val rs1Out = Vec(Bits(32 bits), CDBW)
-  val rs2Out = Vec(Bits(32 bits), CDBW)
-  for (i <- 0 until CDBW) {
+  val rs1Out = Vec(Bits(32 bits), RDP)
+  val rs2Out = Vec(Bits(32 bits), RDP)
+  for (i <- 0 until RDP) {
     rs1Out(i) := readVal(rs1En(i), rs1Sel(i), rs1Phy(i))
     rs2Out(i) := readVal(rs2En(i), rs2Sel(i), rs2Phy(i))
   }

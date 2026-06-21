@@ -17,8 +17,9 @@ class MemRs(cfg: CpuConfig = CpuConfig()) extends Component {
   val CDBW = cfg.cdbWidth
   val NFB  = cfg.numFastBypass
   val EW   = RsEntryLayout.mem.width   // 56
-  val AGUREG = 106                     // agu_reg_t
+  val AGUREG = cfg.aguRegW             // agu_reg_t (106)
   val AGULSQ = 138                     // agu_lsq_t
+  val BPW  = BypassT.width(cfg)         // bypass_t width
 
   val io = new Bundle {
     val clk = in Bool(); val rst = in Bool()
@@ -27,7 +28,7 @@ class MemRs(cfg: CpuConfig = CpuConfig()) extends Component {
     val from_ds_ready      = out Bool()
     val to_prf_rs1_phy   = out Bits (6 bits)
     val to_prf_rs2_phy   = out Bits (6 bits)
-    val to_prf_rs_bypass = out Bits (14 bits)
+    val to_prf_rs_bypass = out Bits (BPW bits)
     val to_prf_rs1_value = in  Bits (32 bits)
     val to_prf_rs2_value = in  Bits (32 bits)
     val cdb_rd_phy_flat = in Bits (CDBW * 6 bits)
@@ -73,7 +74,7 @@ class MemRs(cfg: CpuConfig = CpuConfig()) extends Component {
     val rs_valid   = Vec(Bool(), D)
     val rs_request = Vec(Bool(), D)
     val rs_entry   = Vec(Bits(EW bits), D)
-    val rs_bypass  = Vec(BypassT(), D)
+    val rs_bypass  = Vec(BypassT(cfg), D)
     val push_en    = Vec(Bool(), D)
 
     val notValid = (0 until D).map(i => !rs_valid(i))

@@ -15,16 +15,17 @@ import ooo.CpuConfig
   */
 class BranchTop(cfg: CpuConfig = CpuConfig()) extends Component {
   setDefinitionName("branch_top_spinal")
-  val CDBW = cfg.cdbWidth        // 5
+  val CDBW = cfg.cdbWidth        // [CDB_WIDTH]
   val NFB  = cfg.numFastBypass   // 2
   val PIDX = cfg.prfIdx          // 6
   val RIDX = cfg.robIdx          // 6
   val AIDX = cfg.arfIdx          // 5
-  val GHR  = cfg.ghrLen          // 64
+  val GHR  = cfg.ghrLen          // [GHR_LEN]
   val PROV = cfg.tageNum * (1 + cfg.tageCtrBits + cfg.tageUBits) + 2   // +2 = forwarded bimodal counter
   val EW   = RsEntryLayout.br.width   // 133
   val BNW  = 1 + PIDX + 32       // bypass_network_t = 39
   val FBRW = 183                 // fu_br_reg_t
+  val BPW  = BypassT.width(cfg)   // bypass_t width
 
   val io = new Bundle {
     val clk = in Bool(); val rst = in Bool(); val backend_flush = in Bool()
@@ -35,7 +36,7 @@ class BranchTop(cfg: CpuConfig = CpuConfig()) extends Component {
     val uop_is_compressed = in Bool(); val uop_inst = in Bits (32 bits)
     // to_prf
     val to_prf_rs1_phy = out Bits (PIDX bits); val to_prf_rs2_phy = out Bits (PIDX bits)
-    val to_prf_rs_bypass = out Bits (14 bits)
+    val to_prf_rs_bypass = out Bits (BPW bits)
     val to_prf_rs1_value = in Bits (32 bits); val to_prf_rs2_value = in Bits (32 bits)
     // cdb_itf.rs[CDB_WIDTH]
     val cdb_rd_phy_flat = in Bits (CDBW * PIDX bits); val cdb_valid = in Bits (CDBW bits)

@@ -45,45 +45,77 @@ class FetchAlign(cfg: CpuConfig = CpuConfig()) extends Component {
   val nValid = io.n_valid.asUInt
   val pcU    = io.pc.asUInt
 
-  // --- parallel-prefix realign: precompute per-parcel length + next-start, then
-  // resolve the slot start indices off a precomputed table (no wide parcel mux,
-  // no validity, in the index recurrence). Behaviour == the original serial walk.
+  // --- parallel-prefix realign. The original walk was SERIAL on three chained
+  // recurrences (each IFW deep): start(s)=nxtPos(start(s-1)), stillValid &&= ...,
+  // consumedAcc = Mux(valid, start(s+1), .). That ripple (the fetchAlign segment
+  // on the icache->TAGE-addr critical path) is replaced here with: pointer-jump
+  // tables for the slot starts, a Hillis-Steele prefix-AND for validity, and a
+  // one-hot balanced-OR select for consumed -> O(log IFW) depth. Per-step index
+  // resize is preserved, so every output is BIT-IDENTICAL to the serial walk.
   val comp32 = Vec(Bool(), PMAX)                         // parcel p begins a 16-bit op
-  val nxtPos = Vec(UInt(PIDX bits), PMAX)               // unstopped next start from p
+  val nxtPos = Vec(UInt(PIDX bits), PMAX)               // j1: unstopped next start from p
   for (p <- 0 until PMAX) {
     // cExt off -> every op is 32-bit (2 parcels), so the walk uses a fixed +2 stride.
     comp32(p) := (if (cfg.cExt) (parcelsVec(p)(1 downto 0) =/= B"2'b11") else False)
     nxtPos(p) := (U(p, PIDX bits) + Mux(comp32(p), U(1, PIDX bits), U(2, PIDX bits))).resize(PIDX bits)
   }
   def comp(i: UInt): Bool = comp32(i.resize(log2Up(PMAX) bits))
+  def balancedOr(xs: Seq[UInt]): UInt =
+    if (xs.length == 1) xs.head else { val (l, r) = xs.splitAt(xs.length / 2); balancedOr(l) | balancedOr(r) }
+
+  // pointer-jump tables: jump(k)(p) = start 2^k instructions ahead of parcel p,
+  // each level built in parallel from the previous (one mux rank). start(s) =
+  // nxtPos^s(0) = compose jump(k) for the set bits of s (popcount(s) <= LOGW+1
+  // dependent lookups vs the IFW-deep serial chain). Same per-jump index resize.
+  val LOGW = log2Up(IFW)
+  val jump = Array.tabulate(LOGW + 1)(_ => Vec(UInt(PIDX bits), PMAX))
+  for (p <- 0 until PMAX) jump(0)(p) := nxtPos(p)
+  for (k <- 1 to LOGW; p <- 0 until PMAX)
+    jump(k)(p) := jump(k - 1)(jump(k - 1)(p).resize(log2Up(PMAX) bits))
 
   val start = Vec(UInt(PIDX bits), IFW + 1)              // slot start parcel indices
-  start(0) := 0
-  for (s <- 1 to IFW) start(s) := nxtPos(start(s - 1).resize(log2Up(PMAX) bits))
-
-  val instComp  = Vec(Bool(), IFW)
-  val instValid = Vec(Bool(), IFW)
-  val instPc    = Vec(Bits(32 bits), IFW)
-  val seqNext   = Vec(Bits(32 bits), IFW)
-  val raw       = Vec(Bits(32 bits), IFW)
-
-  var stillValid: Bool = True
-  var consumedAcc: UInt = start(0)
-  for (s <- 0 until IFW) {
-    val idx   = start(s)
-    val hi    = (idx + 1).resize(PIDX bits)
-    val compS = comp(idx)
-    val thisValid = stillValid && (idx < nValid) && (compS || (hi < nValid))
-    instComp(s)  := compS
-    instValid(s) := thisValid
-    raw(s)       := Mux(compS, B(0, 16 bits) ## par(idx), par(hi) ## par(idx))
-    val ipc = (pcU + (idx << 1).resize(32 bits)).asBits
-    instPc(s)    := ipc
-    seqNext(s)   := (ipc.asUInt + Mux(compS, U(2, 32 bits), U(4, 32 bits))).asBits
-    consumedAcc = Mux(thisValid, start(s + 1), consumedAcc)   // last valid slot's end
-    stillValid = stillValid && thisValid
+  for (s <- 0 to IFW) {
+    var cur: UInt = U(0, PIDX bits)
+    for (k <- 0 to LOGW if (s & (1 << k)) != 0) cur = jump(k)(cur.resize(log2Up(PMAX) bits))
+    start(s) := cur
   }
-  val consumedU = consumedAcc                            // start_idx[IF_WIDTH]
+
+  // per-slot validity condition (parallel), then monotone inclusive prefix-AND
+  // (Hillis-Steele, depth ceil(log2 IFW)): instValid(s) == AND(cond(0..s)).
+  val cond = (0 until IFW).map { s =>
+    val idx = start(s); val hi = (idx + 1).resize(PIDX bits)
+    (idx < nValid) && (comp(idx) || (hi < nValid))
+  }.toArray
+  var pv = cond.clone()
+  var dd = 1
+  while (dd < IFW) { pv = Array.tabulate(IFW)(s => if (s >= dd) pv(s) && pv(s - dd) else pv(s)); dd *= 2 }
+  val instValid = Vec(Bool(), IFW)
+  for (s <- 0 until IFW) instValid(s) := pv(s)
+
+  // outputs derived per-slot from start(s) (all parallel now)
+  val instComp = Vec(Bool(), IFW)
+  val instPc   = Vec(Bits(32 bits), IFW)
+  val seqNext  = Vec(Bits(32 bits), IFW)
+  val raw      = Vec(Bits(32 bits), IFW)
+  for (s <- 0 until IFW) {
+    val idx = start(s); val hi = (idx + 1).resize(PIDX bits); val compS = comp(idx)
+    instComp(s) := compS
+    raw(s)      := Mux(compS, B(0, 16 bits) ## par(idx), par(hi) ## par(idx))
+    val ipc = (pcU + (idx << 1).resize(32 bits)).asBits
+    instPc(s)   := ipc
+    seqNext(s)  := (ipc.asUInt + Mux(compS, U(2, 32 bits), U(4, 32 bits))).asBits
+  }
+
+  // consumed = start(numValid). instValid is a monotone prefix, so exactly one
+  // slot boundary is the end -> one-hot select + balanced-OR (== the serial
+  // consumedAcc = Mux(thisValid(s), start(s+1), consumedAcc) reduction).
+  val csel = (0 to IFW).map { s =>
+    val pick = if (s == 0) !instValid(0)
+               else if (s == IFW) instValid(IFW - 1)
+               else instValid(s - 1) && !instValid(s)
+    Mux(pick, start(s), U(0, PIDX bits))
+  }
+  val consumedU = balancedOr(csel)                       // start_idx[IF_WIDTH]
 
   // span: trailing 32-bit op whose high parcel lies past the valid window
   val bIdx     = Mux(consumedU < U(PMAX, PIDX bits), consumedU, U(0, PIDX bits))

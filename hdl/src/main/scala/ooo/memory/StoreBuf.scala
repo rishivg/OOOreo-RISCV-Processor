@@ -12,7 +12,7 @@ import ooo.CpuConfig
   */
 class StoreBuf(cfg: CpuConfig = CpuConfig()) extends Component {
   setDefinitionName("store_buf_spinal")
-  val DEPTH = cfg.stbDepth     // 4
+  val DEPTH = cfg.stbDepth     // [STB_DEPTH]
   val IDX   = cfg.stbIdx       // 2
   val LDQ   = cfg.ldqDepth     // 8
 

@@ -1,6 +1,7 @@
 // Behavioral model for a block-read bimodal (base PHT) bank (1R1W).
-// 64 rows x 16b (= 8 lanes x 2b). COMBINATIONAL read (same-cycle, to preserve the
-// flop-version IPC -- area-measurement build; sync-read retiming is a follow-up).
+// 64 rows x 16b (= 8 lanes x 2b). SYNCHRONOUS read: address sampled at T (re=1), registered
+// row out at T+1 -- a true fakeram45-style macro (reader presents the address one cycle
+// early off blk_pc_next). re gates the capture so rdata HOLDS during a stall.
 // Synchronous bit-masked write on an independent write port. Memory inits to 2'b01 per
 // lane (16'h5555) to match the original bimodal RegInit(01) warm-up.
 module bim_bank_array(clk, re, raddr, rdata, we, waddr, wdata, wmask);
@@ -28,6 +29,11 @@ module bim_bank_array(clk, re, raddr, rdata, we, waddr, wdata, wmask);
     if (we) mem[waddr] <= (mem[waddr] & ~wmask) | (wdata & wmask);
   end
 
-  // combinational read (IPC parity with the flop bimodal)
-  assign rdata = mem[raddr];
+  // synchronous read, re-gated (holds during a stall); init 5555 = warm-up parity
+  reg [DATA_WIDTH-1:0] rdata_reg;
+  initial rdata_reg = 16'h5555;
+  always @(posedge clk) begin
+    if (re) rdata_reg <= mem[raddr];
+  end
+  assign rdata = rdata_reg;
 endmodule

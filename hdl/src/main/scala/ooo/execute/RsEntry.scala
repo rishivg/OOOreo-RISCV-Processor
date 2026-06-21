@@ -36,10 +36,16 @@ case class BypassNet() extends Bundle {  // bypass_network_t (39b): valid rd_phy
 object BypassNet { def fromBits(b: Bits): BypassNet = {
   val n = BypassNet(); n.valid := b(38); n.rd_phy := b(37 downto 32); n.rd_value := b(31 downto 0); n } }
 
-case class BypassT() extends Bundle {    // bypass_t (14b)
-  val rs1_bypass_en  = Bits(6 bits); val rs2_bypass_en  = Bits(6 bits)
-  val rs1_bypass_sel = Bits(1 bit);  val rs2_bypass_sel = Bits(1 bit)
+// bypass_t: en widths = cdbWidth + 1 (one bit per CDB write lane + fast-bypass).
+// sel widths = log2Up(intIssueWidth). Width = 2*(cdbWidth+1) + 2*sel.
+case class BypassT(enW: Int = 6, selW: Int = 1) extends Bundle {
+  val rs1_bypass_en  = Bits(enW bits); val rs2_bypass_en  = Bits(enW bits)
+  val rs1_bypass_sel = Bits(selW bits); val rs2_bypass_sel = Bits(selW bits)
   def toBits: Bits = rs1_bypass_en ## rs2_bypass_en ## rs1_bypass_sel ## rs2_bypass_sel
+}
+object BypassT {
+  def apply(cfg: CpuConfig): BypassT = BypassT(cfg.cdbWidth + 1, log2Up(cfg.intIssueWidth))
+  def width(cfg: CpuConfig): Int = 2 * (cfg.cdbWidth + 1) + 2 * log2Up(cfg.intIssueWidth)
 }
 
 /** Field offsets (LSB-indexed) of rs1_phy/rs2_phy/rs1_valid/rs2_valid within a
@@ -75,7 +81,7 @@ class RsEntry(cfg: CpuConfig, lay: RsEntryLayout) extends Component {
     val entry       = out Bits(W bits)
     val clear       = in  Bool()
     val fast_bypass = in  Vec(BypassNet(), NFB)
-    val rs_bypass   = out (BypassT())
+    val rs_bypass   = out (BypassT(cfg))
     val wakeup_cdb  = in  Vec(CdbRs(), CDBW)
   }
 

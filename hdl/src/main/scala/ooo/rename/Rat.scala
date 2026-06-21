@@ -17,7 +17,7 @@ import ooo.CpuConfig
 class Rat(cfg: CpuConfig = CpuConfig()) extends Component {
   setDefinitionName("rat_spinal")
   val IDW   = cfg.idWidth      // 2
-  val CDBW  = cfg.cdbWidth     // 5
+  val CDBW  = cfg.cdbWidth     // [CDB_WIDTH]
   val AIDX  = cfg.arfIdx       // 5
   val PIDX  = cfg.prfIdx       // 6
   val ADEP  = cfg.arfDepth     // 32

@@ -25,8 +25,8 @@ class FuMul(cfg: CpuConfig = CpuConfig()) extends Component {
   def MD_MULHSU = B"4'b0010"
   def MD_MULHU  = B"4'b0011"
 
-  val regW = 6 + 5 + 6 + 4 + 32 + 32   // intm_rs_reg_t = 85
-  val cdbW = 6 + 5 + 6 + 32 + 32 + 32  // fu_cdb_reg_t  = 113
+  val regW = cfg.intmRsRegW   // intm_rs_reg_t (85)
+  val cdbW = cfg.fuCdbRegW    // fu_cdb_reg_t  (113)
 
   val io = new Bundle {
     val clk       = in  Bool()

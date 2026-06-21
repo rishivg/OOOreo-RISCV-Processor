@@ -26,10 +26,10 @@ class BackendTop(cfg: CpuConfig = CpuConfig()) extends Component {
   val IIW = cfg.intIssueWidth   // 2
   val PIDX = cfg.prfIdx; val AIDX = cfg.arfIdx; val RIDX = cfg.robIdx; val GHR = cfg.ghrLen
   val PROV = cfg.tageNum * (1 + cfg.tageCtrBits + cfg.tageUBits) + 2   // +2 = forwarded bimodal counter
-  val BNW = 1 + PIDX + 32       // 39
+  val BNW = cfg.bypassNetW      // bypass_network_t (39)
   val RVFIW = 413
-  val REGW = 85; val CDBR = 113 // intm div iss/cdb
-  val FBRW = 183
+  val REGW = cfg.intmRsRegW; val CDBR = cfg.fuCdbRegW // intm div iss/cdb (85 / 113)
+  val FBRW = cfg.fuBrRegW       // fu_br_reg_t (183)
   val PPI = cfg.robPtrIdx + 1  // rob head/tail ptr width (6)
 
   val io = new Bundle {
@@ -212,7 +212,9 @@ class BackendTop(cfg: CpuConfig = CpuConfig()) extends Component {
     lsu.io.uop_is_atomic := memUop.is_atomic(0); lsu.io.uop_amo_op := memUop.amo_op
     lsu.io.atomic_go := rob.io.atomic_go; lsu.io.atomic_go_rob_id := rob.io.atomic_go_rob_id
 
-    // ---- CDB bus (lane 0,4=int; 1=intm; 2=branch; 3=lsu) ----
+    // ---- CDB writeback/wakeup bus (CDBW=4 lanes; lever #2: intm+branch share lane 2)
+    //   lane 0=int0  1=int1  2=intm|branch (branch priority)  3=lsu
+    // intm yields lane 2 the cycle branch broadcasts (cdb_ready=!branch_valid).
     val cdbRobId = Vec(Bits(RIDX bits), CDBW); val cdbRdPhy = Vec(Bits(PIDX bits), CDBW)
     val cdbRdArch = Vec(Bits(AIDX bits), CDBW); val cdbRdVal = Vec(Bits(32 bits), CDBW)
     val cdbValid = Vec(Bool(), CDBW); val cdbRs1 = Vec(Bits(32 bits), CDBW); val cdbRs2 = Vec(Bits(32 bits), CDBW)
@@ -221,10 +223,19 @@ class BackendTop(cfg: CpuConfig = CpuConfig()) extends Component {
     }
     setLane(0, sl(intRs.io.fu_cdb_rob_id_flat, 0, RIDX), sl(intRs.io.fu_cdb_rd_phy_flat, 0, PIDX), sl(intRs.io.fu_cdb_rd_arch_flat, 0, AIDX),
       sl(intRs.io.fu_cdb_rd_value_flat, 0, 32), intRs.io.fu_cdb_valid(0), sl(intRs.io.fu_cdb_rs1_dbg_flat, 0, 32), sl(intRs.io.fu_cdb_rs2_dbg_flat, 0, 32))
-    setLane(4, sl(intRs.io.fu_cdb_rob_id_flat, 1, RIDX), sl(intRs.io.fu_cdb_rd_phy_flat, 1, PIDX), sl(intRs.io.fu_cdb_rd_arch_flat, 1, AIDX),
+    setLane(1, sl(intRs.io.fu_cdb_rob_id_flat, 1, RIDX), sl(intRs.io.fu_cdb_rd_phy_flat, 1, PIDX), sl(intRs.io.fu_cdb_rd_arch_flat, 1, AIDX),
       sl(intRs.io.fu_cdb_rd_value_flat, 1, 32), intRs.io.fu_cdb_valid(1), sl(intRs.io.fu_cdb_rs1_dbg_flat, 1, 32), sl(intRs.io.fu_cdb_rs2_dbg_flat, 1, 32))
-    setLane(1, intmRs.io.fu_cdb_rob_id, intmRs.io.fu_cdb_rd_phy, intmRs.io.fu_cdb_rd_arch, intmRs.io.fu_cdb_rd_value, intmRs.io.fu_cdb_valid, intmRs.io.fu_cdb_rs1_dbg, intmRs.io.fu_cdb_rs2_dbg)
-    setLane(2, br.io.fu_cdb_rob_id, br.io.fu_cdb_rd_phy, br.io.fu_cdb_rd_arch, br.io.fu_cdb_rd_value, br.io.fu_cdb_valid, br.io.fu_cdb_rs1_dbg, br.io.fu_cdb_rs2_dbg)
+    // lane 2 = branch OR intm, branch wins. intm's cdb_ready := !br.fu_cdb_valid.
+    val brValid = br.io.fu_cdb_valid
+    intmRs.io.cdb_ready := !brValid
+    setLane(2,
+      Mux(brValid, br.io.fu_cdb_rob_id,  intmRs.io.fu_cdb_rob_id),
+      Mux(brValid, br.io.fu_cdb_rd_phy,  intmRs.io.fu_cdb_rd_phy),
+      Mux(brValid, br.io.fu_cdb_rd_arch, intmRs.io.fu_cdb_rd_arch),
+      Mux(brValid, br.io.fu_cdb_rd_value, intmRs.io.fu_cdb_rd_value),
+      brValid || intmRs.io.fu_cdb_valid,
+      Mux(brValid, br.io.fu_cdb_rs1_dbg, intmRs.io.fu_cdb_rs1_dbg),
+      Mux(brValid, br.io.fu_cdb_rs2_dbg, intmRs.io.fu_cdb_rs2_dbg))
     setLane(3, lsu.io.fu_cdb_rob_id, lsu.io.fu_cdb_rd_phy, lsu.io.fu_cdb_rd_arch, lsu.io.fu_cdb_rd_value, lsu.io.fu_cdb_valid, lsu.io.fu_cdb_rs1_value_dbg, lsu.io.fu_cdb_rs2_value_dbg)
 
     val cdbRdPhyFlat = Cat((0 until CDBW).map(cdbRdPhy(_)))
@@ -243,24 +254,27 @@ class BackendTop(cfg: CpuConfig = CpuConfig()) extends Component {
     rob.io.cdb_rs1_dbg_flat := cdbRs1Flat; rob.io.cdb_rs2_dbg_flat := cdbRs2Flat
     prf.io.cdb_rd_phy_flat := cdbRdPhyFlat; prf.io.cdb_rd_value_flat := cdbRdValFlat
 
-    // ---- PRF read fabric (lane 0,4=int; 1=intm; 2=branch; 3=lsu) ----
-    val rsPhy1 = Vec(Bits(PIDX bits), CDBW); val rsPhy2 = Vec(Bits(PIDX bits), CDBW); val rsByp = Vec(Bits(14 bits), CDBW)
-    rsPhy1(0) := sl(intRs.io.to_prf_rs1_phy_flat, 0, PIDX); rsPhy1(4) := sl(intRs.io.to_prf_rs1_phy_flat, 1, PIDX)
-    rsPhy2(0) := sl(intRs.io.to_prf_rs2_phy_flat, 0, PIDX); rsPhy2(4) := sl(intRs.io.to_prf_rs2_phy_flat, 1, PIDX)
-    rsByp(0)  := sl(intRs.io.to_prf_rs_bypass_flat, 0, 14); rsByp(4) := sl(intRs.io.to_prf_rs_bypass_flat, 1, 14)
-    rsPhy1(1) := intmRs.io.to_prf_rs1_phy; rsPhy2(1) := intmRs.io.to_prf_rs2_phy; rsByp(1) := intmRs.io.to_prf_rs_bypass
-    rsPhy1(2) := br.io.to_prf_rs1_phy; rsPhy2(2) := br.io.to_prf_rs2_phy; rsByp(2) := br.io.to_prf_rs_bypass
-    rsPhy1(3) := lsu.io.to_prf_rs1_phy; rsPhy2(3) := lsu.io.to_prf_rs2_phy; rsByp(3) := lsu.io.to_prf_rs_bypass
-    prf.io.from_rs_rs1_phy_flat := Cat((0 until CDBW).map(rsPhy1(_)))
-    prf.io.from_rs_rs2_phy_flat := Cat((0 until CDBW).map(rsPhy2(_)))
-    prf.io.from_rs_rs_bypass_flat := Cat((0 until CDBW).map(rsByp(_)))
-    val prfV1 = prf.io.from_rs_rs1_value_flat.subdivideIn(CDBW slices)
-    val prfV2 = prf.io.from_rs_rs2_value_flat.subdivideIn(CDBW slices)
-    intRs.io.to_prf_rs1_value_flat := prfV1(4) ## prfV1(0)   // lane1(hi)=idx4, lane0(lo)=idx0
-    intRs.io.to_prf_rs2_value_flat := prfV2(4) ## prfV2(0)
-    intmRs.io.to_prf_rs1_value := prfV1(1); intmRs.io.to_prf_rs2_value := prfV2(1)
-    br.io.to_prf_rs1_value := prfV1(2); br.io.to_prf_rs2_value := prfV2(2)
-    lsu.io.to_prf_rs1_value := prfV1(3); lsu.io.to_prf_rs2_value := prfV2(3)
+    // ---- PRF read fabric (RDP=5 ports; 0=int0 1=int1 2=intm 3=branch 4=lsu) ----
+    // The read fabric stays 5 ports (each issues independently of writeback=4).
+    val RDP = cfg.prfReadPorts
+    val BPW = ooo.execute.BypassT.width(cfg)
+    val rsPhy1 = Vec(Bits(PIDX bits), RDP); val rsPhy2 = Vec(Bits(PIDX bits), RDP); val rsByp = Vec(Bits(BPW bits), RDP)
+    rsPhy1(0) := sl(intRs.io.to_prf_rs1_phy_flat, 0, PIDX); rsPhy1(1) := sl(intRs.io.to_prf_rs1_phy_flat, 1, PIDX)
+    rsPhy2(0) := sl(intRs.io.to_prf_rs2_phy_flat, 0, PIDX); rsPhy2(1) := sl(intRs.io.to_prf_rs2_phy_flat, 1, PIDX)
+    rsByp(0)  := sl(intRs.io.to_prf_rs_bypass_flat, 0, BPW); rsByp(1) := sl(intRs.io.to_prf_rs_bypass_flat, 1, BPW)
+    rsPhy1(2) := intmRs.io.to_prf_rs1_phy; rsPhy2(2) := intmRs.io.to_prf_rs2_phy; rsByp(2) := intmRs.io.to_prf_rs_bypass
+    rsPhy1(3) := br.io.to_prf_rs1_phy; rsPhy2(3) := br.io.to_prf_rs2_phy; rsByp(3) := br.io.to_prf_rs_bypass
+    rsPhy1(4) := lsu.io.to_prf_rs1_phy; rsPhy2(4) := lsu.io.to_prf_rs2_phy; rsByp(4) := lsu.io.to_prf_rs_bypass
+    prf.io.from_rs_rs1_phy_flat := Cat((0 until RDP).map(rsPhy1(_)))
+    prf.io.from_rs_rs2_phy_flat := Cat((0 until RDP).map(rsPhy2(_)))
+    prf.io.from_rs_rs_bypass_flat := Cat((0 until RDP).map(rsByp(_)))
+    val prfV1 = prf.io.from_rs_rs1_value_flat.subdivideIn(RDP slices)
+    val prfV2 = prf.io.from_rs_rs2_value_flat.subdivideIn(RDP slices)
+    intRs.io.to_prf_rs1_value_flat := prfV1(1) ## prfV1(0)   // issue1(hi)=port1, issue0(lo)=port0
+    intRs.io.to_prf_rs2_value_flat := prfV2(1) ## prfV2(0)
+    intmRs.io.to_prf_rs1_value := prfV1(2); intmRs.io.to_prf_rs2_value := prfV2(2)
+    br.io.to_prf_rs1_value := prfV1(3); br.io.to_prf_rs2_value := prfV2(3)
+    lsu.io.to_prf_rs1_value := prfV1(4); lsu.io.to_prf_rs2_value := prfV2(4)
 
     // ---- alu_bypass (produced by int_rs) ----
     val bypass = intRs.io.alu_bypass_flat

@@ -13,13 +13,14 @@ import ooo.CpuConfig
   */
 class IntmRs(cfg: CpuConfig = CpuConfig()) extends Component {
   setDefinitionName("intm_rs_spinal")
-  val D    = cfg.intmrsDepth   // 4
+  val D    = cfg.intmrsDepth   // [INTMRS_DEPTH]
   val IDW  = cfg.idWidth       // 2
   val CDBW = cfg.cdbWidth
   val NFB  = cfg.numFastBypass
   val EW   = RsEntryLayout.intm.width   // 35
-  val REGW = 85                         // intm_rs_reg_t
-  val CDBR = 113                        // fu_cdb_reg_t
+  val REGW = cfg.intmRsRegW             // intm_rs_reg_t (85)
+  val CDBR = cfg.fuCdbRegW              // fu_cdb_reg_t (113)
+  val BPW  = BypassT.width(cfg)          // bypass_t width
 
   val io = new Bundle {
     val clk = in Bool(); val rst = in Bool()
@@ -28,12 +29,15 @@ class IntmRs(cfg: CpuConfig = CpuConfig()) extends Component {
     val from_ds_ready      = out Bool()
     val to_prf_rs1_phy   = out Bits (6 bits)
     val to_prf_rs2_phy   = out Bits (6 bits)
-    val to_prf_rs_bypass = out Bits (14 bits)
+    val to_prf_rs_bypass = out Bits (BPW bits)
     val to_prf_rs1_value = in  Bits (32 bits)
     val to_prf_rs2_value = in  Bits (32 bits)
     val cdb_rd_phy_flat = in Bits (CDBW * 6 bits)
     val cdb_valid       = in Bits (CDBW bits)
     val alu_bypass_flat = in Bits (NFB * 39 bits)
+    // lever #2: intm shares one CDB writeback lane with branch (branch priority).
+    // cdb_ready=0 the cycle branch broadcasts -> intm freezes (holds its result).
+    val cdb_ready       = in Bool()
     // fu_cdb_itf.fu (single)
     val fu_cdb_rob_id = out Bits (6 bits);  val fu_cdb_rd_phy = out Bits (6 bits)
     val fu_cdb_rd_arch = out Bits (5 bits); val fu_cdb_rd_value = out Bits (32 bits)
@@ -76,7 +80,7 @@ class IntmRs(cfg: CpuConfig = CpuConfig()) extends Component {
     val rs_valid   = Vec(Bool(), D)
     val rs_request = Vec(Bool(), D)
     val rs_entry   = Vec(Bits(EW bits), D)
-    val rs_bypass  = Vec(BypassT(), D)
+    val rs_bypass  = Vec(BypassT(cfg), D)
     val push_en    = Vec(Bool(), D)
     val entry_in   = Vec(Bits(EW bits), D)
 
@@ -152,12 +156,14 @@ class IntmRs(cfg: CpuConfig = CpuConfig()) extends Component {
     val fu_div_valid = io.div_nxt_valid
     val fu_div_cdb   = io.div_cdb_out
 
-    // CDB arbiter (div priority, pass-through)
+    // CDB arbiter (div priority, pass-through). lever #2: gate everything on
+    // cdb_ready -- when branch broadcasts (cdb_ready=0) intm yields the shared
+    // writeback lane and freezes (FUs hold result, no dequeue, no broadcast).
     val cdb_valid     = fu_mul_valid || fu_div_valid
-    fumul.io.nxt_ready := !fu_div_valid          // cdb_mul_ready
-    io.div_nxt_ready   := True                   // cdb_div_ready
+    fumul.io.nxt_ready := io.cdb_ready && !fu_div_valid   // cdb_mul_ready
+    io.div_nxt_ready   := io.cdb_ready                    // cdb_div_ready
     val cdb_reg_in = Mux(fu_div_valid, fu_div_cdb, fu_mul_cdb)
-    io.fu_cdb_valid   := cdb_valid
+    io.fu_cdb_valid   := cdb_valid && io.cdb_ready
     io.fu_cdb_rob_id  := cdb_reg_in(112 downto 107)
     io.fu_cdb_rd_arch := cdb_reg_in(106 downto 102)
     io.fu_cdb_rd_phy  := cdb_reg_in(101 downto 96)
