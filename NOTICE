@@ -1,0 +1,26 @@
+OOOreo
+Copyright 2026 OOOreo contributors
+
+Original OOOreo code is licensed under the Apache License, Version 2.0.
+Third-party components retain their respective licenses and attribution.
+
+The generated RVFI monitor in hvl/common/rvfimon.v comes from riscv-formal.
+Copyright (C) 2017 Claire Xenia Wolf <claire@yosyshq.com>.
+The ISC license is reproduced in licenses/riscv-formal.txt.
+
+CoreMark benchmark fixtures and the qualification port derive from EEMBC
+CoreMark. CoreMark is a trademark of EEMBC. Its upstream license and acceptable
+use agreement are reproduced in licenses/coremark.md. This project makes no
+claim of an EEMBC-certified CoreMark score.
+
+The Nangate Open Cell Library and accompanying platform data are distributed
+with the physical implementation under synth/implementation/models/. Their
+embedded copyright notices and models/LICENSE apply to those files.
+Nangate and its associated marks belong to their respective owners.
+
+The inherited DRAM timing model is based on MT48LC64M4A2-75 timing parameters.
+Its redistribution license has not been established by this project; it is
+not covered by the Apache-2.0 grant for original OOOreo code.
+
+Qualification dependencies downloaded by verification/setup.sh retain their
+upstream licenses. Source repositories and revisions are in verification/sources.json.

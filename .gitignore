@@ -1,0 +1,46 @@
+# Editors and language caches
+__pycache__/
+*.pyc
+*.swp
+*.swo
+*~
+.DS_Store
+.nfs*
+
+# Generated logs and waveforms
+*.log
+*.vcd
+*.fst
+*.done
+obj_dir/
+*.o
+*.a
+*.so
+*.vvp
+hdl/project/.boot/
+hdl/project/.sbtboot/
+lint/reports/
+/formal/
+
+# Local tool installations and experiments
+tools/oss-cad-suite/
+tools/nextpnr-xilinx*/
+tools/*.bin
+tools/cmake*/
+tools/boost*/
+tools/[Ee]igen*/
+wip-patches/
+
+# Local build output and measurements
+/build/
+/dist/
+/verification/results.json
+/sim/perf-reference.json
+/synth/implementation/reports/
+
+# Local credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key

@@ -1,0 +1,16 @@
+work/
+reports/
+outputs/
+synthesis.ys
+/opensource/**/*.txt
+/opensource/**/*.def
+/opensource/**/*.err
+/opensource/**/nangate45.lib
+/opensource/**/cpu.v
+/opensource/**/netlist*.v
+/opensource/**/src/
+/opensource/**/diag*/
+/opensource/pnr/**/build/
+/opensource/pnr/**/runs/
+/opensource/pnr/**/ppa*.json
+/opensource/pnr/**/pd4*.json

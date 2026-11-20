@@ -1,0 +1,7 @@
+# Tested host versions; distribution packages may differ.
+VERILATOR_VERSION=5.032
+YOSYS_SYNTH_VERSION=0.64
+RISCV_GCC_VERSION=14.2.0
+PYTHON_MIN=3.10
+# ASIC PPA container.
+ORFS_IMAGE=openroad/orfs@sha256:b19fe0a514a87aee0f97073797395c0ca489c45406b526bc75fd2038c82fdf69

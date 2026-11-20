@@ -1,0 +1,18 @@
+# Nangate45 screening map; prune verification ports before flattening.
+read_verilog -lib synth/opensource/pnr/fakeram_stubs.v
+read_verilog -sv  synth/opensource/pnr/macro_wrappers.v
+read_verilog -lib synth/opensource/dw_div_seq_bb.v
+read_verilog synth/opensource/cpu.v
+hierarchy -top cpu
+# Keep synthesis hierarchical to limit ABC work on predictor muxes.
+synth -top cpu
+delete cpu/w:rvfi_flat
+delete backend_top_spinal/w:rvfi_itf_flat
+delete rob_spinal/w:rvfi_itf_flat
+opt_clean -purge
+# Use the cell library supplied by the pinned OpenROAD container.
+dfflibmap -liberty /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
+abc -liberty /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib -fast
+opt_clean -purge
+write_verilog -noattr synth/opensource/pnr/netlist_pnr.v
+tee -o synth/opensource/pnr/reports_area_pnr.txt stat -liberty /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib -top cpu

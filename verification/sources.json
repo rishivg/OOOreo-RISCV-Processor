@@ -1,0 +1,26 @@
+{
+  "act4": {
+    "url": "https://github.com/riscv-non-isa/riscv-arch-test.git",
+    "commit": "fb6218b0a25c47356a941411eb62c22377311b0c"
+  },
+  "embench": {
+    "url": "https://github.com/embench/embench-iot.git",
+    "commit": "09c2ed8c3b7008c95d08b038de4a3f6dc103ed70"
+  },
+  "coremark": {
+    "url": "https://github.com/eembc/coremark.git",
+    "commit": "1f483d5b8316753a742cbf5590caf5bd0a4e4777"
+  },
+  "riscv-dv": {
+    "url": "https://github.com/chipsalliance/riscv-dv.git",
+    "commit": "0d71c2b666dec48dde0b804a2138426da56aa252"
+  },
+  "spike": {
+    "url": "https://github.com/riscv-software-src/riscv-isa-sim.git",
+    "commit": "5a760667bf0d0ab893173b9eeff9c109c8d7dd9a"
+  },
+  "newlib": {
+    "url": "https://github.com/mirror/newlib-cygwin.git",
+    "commit": "1b7c72fdcc4bde7520407d2d3364146f04fb8312"
+  }
+}

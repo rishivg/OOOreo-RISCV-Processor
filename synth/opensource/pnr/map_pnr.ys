@@ -1,0 +1,30 @@
+# Nangate45 screening map; prune verification ports before flattening.
+read_verilog -lib synth/opensource/pnr/fakeram_stubs.v
+read_verilog -sv  synth/opensource/pnr/macro_wrappers.v
+read_verilog -lib synth/opensource/dw_div_seq_bb.v
+read_verilog synth/opensource/cpu.v
+hierarchy -top cpu
+# Keep initial synthesis hierarchical to limit ABC work on predictor muxes.
+synth -top cpu
+delete cpu/w:rvfi_flat
+delete backend_top_spinal/w:rvfi_itf_flat
+delete rob_spinal/w:rvfi_itf_flat
+delete backend_top_spinal/w:ff_inst_raw_flat
+delete inst_queue_spinal/w:out_inst_raw_flat
+delete inst_queue_spinal/w:in_inst_raw_flat
+delete frontend_top_spinal/w:to_fifo_inst_raw_flat
+delete fetch_align/w:inst_raw
+opt_clean -purge
+flatten
+opt_clean -purge
+# Preserve synchronous-reset priority before extracting clock enables.
+dffunmap -srst-only
+clockgate -liberty /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib -min_net_size 4
+opt_clean -purge
+# Use the cell library supplied by the pinned OpenROAD container.
+dfflibmap -liberty /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
+abc -liberty /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib -D 1000
+opt_clean -purge
+write_verilog -noattr synth/opensource/pnr/netlist_pnr.v
+# Skip stat: affected Yosys versions crash on this flattened netlist.
+# OpenROAD reports placed area.

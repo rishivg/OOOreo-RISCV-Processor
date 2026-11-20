@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "frequency_mhz": 601.5,
+  "area_um2": 645469,
+  "die_area_um2": 1210000,
+  "power_w": 0.3203417665594568,
+  "power_components_w": {
+    "internal": 0.17471849881201607,
+    "switching": 0.11773540233267266,
+    "leakage": 0.027887865414768065
+  },
+  "physical_leaf_instances": 361846,
+  "flip_flops": 17250,
+  "clock_gate_latches": 2,
+  "macros": 69,
+  "layout_sha256": "ddb4594b491a3f94479128b77e24dafd7e4a79a5a36938ebc125f8b6c3dd96d9",
+  "native_graph_sha256": "c4fd6560ebe1e49d08aaf5981b1e96aa0d429cf26c6670d20fee070956b80c50",
+  "setup_slack_ns": 0.000123679,
+  "hold_slack_ns": 0.050032202,
+  "hold_floor_ns": 0.05,
+  "additional_setup_guard_ns": 0.1,
+  "additional_setup_guard_passed": false,
+  "technology": {
+    "library": "Nangate45",
+    "corner": "TT",
+    "voltage_v": 1.1,
+    "temperature_c": 25,
+    "parasitics": "placement",
+    "macros": "placeholder SRAM and divider models"
+  },
+  "activity": {
+    "toggle_rate": 0.1,
+    "duty": 0.5
+  },
+  "openroad_sha256": "6a998cd70859d1c15f9a3d53b9b9a1a18a3492c2910549d0b0fa67c4f9f73a2d",
+  "scope": "Physical implementation estimate. Portable RTL generation is separate. This is not routed signoff, silicon measurement, or workload power."
+}

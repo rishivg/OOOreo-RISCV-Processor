@@ -1,0 +1,4 @@
+*.elf
+!coremark_im.elf
+!coremark_imc.elf
+fuzz/*.s

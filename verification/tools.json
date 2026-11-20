@@ -1,0 +1,10 @@
+{
+  "sail": {
+    "url": "https://github.com/riscv/sail-riscv/releases/download/0.16/sail-riscv-Linux-x86_64.tar.gz",
+    "sha256": "f9bb8a32b8f3eddbdf69b3a29d96dff4ba1e77f45877165e0478418367da6bee"
+  },
+  "act_gcc": {
+    "url": "https://github.com/riscv-collab/riscv-gnu-toolchain/releases/download/2026.08.27/riscv64-elf-ubuntu-24.04-gcc.tar.xz",
+    "sha256": "fe7dadf99dfaee59855b4be5f8d491dc66593bec295090e155a3ec51f0d14f56"
+  }
+}

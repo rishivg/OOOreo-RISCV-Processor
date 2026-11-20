@@ -1,0 +1,23 @@
+library (div_fake) {
+  delay_model : table_lookup;
+  time_unit : "1ns";
+  voltage_unit : "1V";
+  current_unit : "1uA";
+  leakage_power_unit : "1nW";
+  capacitive_load_unit (1,ff);
+  default_max_transition : 0.227;
+  type (bus33) { base_type : array; data_type : bit; bit_width : 33; bit_from : 32; bit_to : 0; downto : true; }
+  cell (DW_div_seq) {
+    area : 3600.0;
+    pin(clk) { direction : input; capacitance : 0.005; }
+    pin(rst_n) { direction : input; capacitance : 0.005; }
+    pin(hold) { direction : input; capacitance : 0.005; }
+    pin(start) { direction : input; capacitance : 0.005; }
+    pin(complete) { direction : output; capacitance : 0.0; }
+    pin(divide_by_0) { direction : output; capacitance : 0.0; }
+    bus(a) { bus_type : bus33; direction : input; capacitance : 0.005; }
+    bus(b) { bus_type : bus33; direction : input; capacitance : 0.005; }
+    bus(quotient) { bus_type : bus33; direction : output; capacitance : 0.0; }
+    bus(remainder) { bus_type : bus33; direction : output; capacitance : 0.0; }
+  }
+}

@@ -1,0 +1,6 @@
+bin/
+verilator/
+verilator_power/
+spike/
+*.dis
+perf/*.json

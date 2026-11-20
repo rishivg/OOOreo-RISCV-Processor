@@ -1,0 +1,26 @@
+- test: ooo_arithmetic
+  gen_test: riscv_instr_base_test
+  iterations: 4
+  gen_opts: >-
+    --instr_cnt=500 --num_of_sub_program=0 --no_fence=1 --no_data_page=1
+    --no_branch_jump=1 --no_load_store=1 --boot_mode=m --no_csr_instr=1
+- test: ooo_control
+  gen_test: riscv_instr_base_test
+  iterations: 4
+  gen_opts: >-
+    --instr_cnt=500 --num_of_sub_program=0 --no_fence=1 --no_data_page=1
+    --no_load_store=1 --boot_mode=m --no_csr_instr=1
+- test: ooo_memory
+  gen_test: riscv_instr_base_test
+  iterations: 4
+  gen_opts: >-
+    --instr_cnt=500 --num_of_sub_program=0 --no_fence=1 --boot_mode=m --no_csr_instr=1
+    --no_branch_jump=1
+    --directed_instr_0=riscv_load_store_rand_instr_stream,4
+- test: ooo_loops
+  gen_test: riscv_instr_base_test
+  iterations: 4
+  gen_opts: >-
+    --instr_cnt=500 --num_of_sub_program=0 --no_fence=1 --no_data_page=1
+    --no_load_store=1 --boot_mode=m --no_csr_instr=1
+    --no_branch_jump=1 --directed_instr_0=riscv_loop_instr,4
